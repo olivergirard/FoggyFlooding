@@ -24,9 +24,9 @@ const int screenHeight = 800;
 glm::vec3 background = glm::vec3(0, 1, 1);
 
 /* Do not modify these. */
-glm::vec3 eye = glm::vec3(0, 0, -screenWidth * 0.6); //change x and y for scaling 
-glm::vec3 lookAt = glm::vec3(-100, -100, 0);
-glm::vec3 up = glm::vec3(0, 1, 0.0);
+glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth);
+glm::vec3 lookAt = glm::vec3(-100.0f, -100.0f, 0.0f);
+glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
 const GLfloat EPSILON = 1e-2;
 
@@ -43,11 +43,9 @@ struct Light {
 
 struct Particle {
 	glm::vec3 position;
-	//glm::vec3 velocity;
-	//glm::vec3 force;
-	GLfloat radius = 50.0f;
+	GLfloat radius = 0.0f;
 
-	glm::vec3 diff = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 diff = glm::vec3(0.0f, 0.0f, 1.0f);
 	glm::vec3 spec = glm::vec3(1.0f, 1.0f, 1.0f);
 	GLfloat shininess = 20.0f;
 };
@@ -120,12 +118,22 @@ vector<Particle> CreateParticles(GLuint numParticles) {
 
 	vector<Particle> particles;
 
+	/* Initial particle range for particles with a radius of 10:
+		x: [70, 210], y: [-88, 150] */
+
 	for (int i = 0; i < numParticles; i++) {
 		Particle p;
 
-		p.position = glm::vec3(0, 0, 0);
-		p.radius = 45;
+		p.position = glm::vec3(70, -88, 0);
+		p.radius = 10;
+		particles.push_back(p);
 
+		p.position = glm::vec3(140, 31, 0);
+		p.radius = 10;
+		particles.push_back(p);
+
+		p.position = glm::vec3(210, 150, 0);
+		p.radius = 10;
 		particles.push_back(p);
 	}
 
@@ -281,7 +289,6 @@ glm::vec3 TraceRay(const Ray& ray) {
 		color += Phong(ray, light, t, particle);
 	}
 
-	color = glm::vec3(1, 1, 1);
 	return color;
 }
 
@@ -316,6 +323,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_SAMPLES, 4);
 
 	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "CS434 Final Project", NULL, NULL);
 
@@ -328,6 +336,10 @@ int main()
 	glfwMakeContextCurrent(window);
 
 	gladLoadGL();
+	glEnable(GL_MULTISAMPLE);
+	glEnable(GL_BLEND);
+	glEnable(GL_TEXTURE_2D);
+
 	glViewport(0, 0, screenWidth, screenHeight);
 
 	glGenVertexArrays(1, &VAO);
@@ -365,9 +377,8 @@ int main()
 	lights = CreateLights();
 
 	/* Do not modify these. */
-	//glm::mat4 proj = glm::ortho(0.0f, (float)screenWidth, 0.0f, (float)screenHeight, 0.01f, 1000.0f);
 	glm::mat4 proj = glm::perspective(glm::radians(45.0f), 1.0f, 0.01f, 1000.0f);
-	glm::mat4 view = glm::lookAt(glm::vec3(0, 0, -screenWidth * 0.6), glm::vec3(3, 3, 0), glm::vec3(0, 1, 0));
+	glm::mat4 view = glm::lookAt(glm::vec3(0, 0, -screenWidth * 0.7), glm::vec3(3, 3, 0), glm::vec3(0, 1, 0));
 	glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(0.0075));
 
 	glm::mat4 modelView = proj * view * model;
@@ -377,23 +388,15 @@ int main()
 	{
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		//ImGui_ImplOpenGL3_NewFrame();
-		//ImGui_ImplGlfw_NewFrame();
-		//ImGui::NewFrame();
-
-		//ImGui::Begin("CS434 Final Project");
-
-		//ImGui::End();
-
 		if (drawScene == true) {
 
 			glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
 			colors = RayCastOutput();
 
-			glPointSize(1);
+			/* TODO: draw textured quad and print that. none of this pixel by pixel stuff. */
 
-			for (int i = 0; i < points; i++) {
+			/*for (int i = 0; i < points; i++) {
 
 				GLfloat red = colors[i].r;
 				GLfloat green = colors[i].g;
@@ -401,14 +404,11 @@ int main()
 
 				glUniform4f(glGetUniformLocation(shaderProg, "color"), red, green, blue, 1.0f);
 				glDrawArrays(GL_POINTS, i, 1);
-			}
+			}*/
 			
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 		}
-
-		//ImGui::Render();
-		//ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
