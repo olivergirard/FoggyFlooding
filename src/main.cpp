@@ -16,17 +16,14 @@
 
 using namespace std;
 
-GLuint VAO, VBO;
-vector<glm::vec3> colors;
-
 const int screenWidth = 800;
 const int screenHeight = 800;
-glm::vec3 background = glm::vec3(0, 1, 1);
+glm::vec3 background = glm::vec3(0, 0, 1);
 
-/* Do not modify these. */
-glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth);
-glm::vec3 lookAt = glm::vec3(-100.0f, -100.0f, 0.0f);
-glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+/* Do not modify these as they are essential for ray tracing. */
+glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth * 0.6);
+glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
+glm::vec3 up = glm::vec3(-1.0f, 0.0f, 0.0f);
 
 const GLfloat EPSILON = 1e-2;
 
@@ -45,6 +42,7 @@ struct Particle {
 	glm::vec3 position;
 	GLfloat radius = 0.0f;
 
+	/* For now, these values are hard-coded. */
 	glm::vec3 diff = glm::vec3(0.0f, 0.0f, 1.0f);
 	glm::vec3 spec = glm::vec3(1.0f, 1.0f, 1.0f);
 	GLfloat shininess = 20.0f;
@@ -53,67 +51,7 @@ struct Particle {
 vector<Light> lights;
 vector<Particle> particles;
 
-int CompileShaders() {
-	//Vertex Shader
-	const char* vsSrc = "#version 330 core\n"
-		"layout (location = 0) in vec4 iPos;\n"
-		"uniform mat4 modelview;\n"
-		"void main()\n"
-		"{\n"
-		"   vec4 oPos=modelview*iPos;\n"
-		"   gl_Position = vec4(oPos.x, oPos.y, oPos.z, oPos.w);\n"
-		"}\0";
-
-	//Fragment Shader
-	const char* fsSrc = "#version 330 core\n"
-		"out vec4 col;\n"
-		"uniform vec4 color;\n"
-		"void main()\n"
-		"{\n"
-		"   col = color;\n"
-		"}\n\0";
-
-	//Create VS object
-	GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-	//Attach VS src to the Vertex Shader Object
-	glShaderSource(vs, 1, &vsSrc, NULL);
-	//Compile the vs
-	glCompileShader(vs);
-
-	//The same for FS
-	GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fs, 1, &fsSrc, NULL);
-	glCompileShader(fs);
-
-	//Get shader program object
-	GLuint shaderProg = glCreateProgram();
-	//Attach both vs and fs
-	glAttachShader(shaderProg, vs);
-	glAttachShader(shaderProg, fs);
-	//Link all
-	glLinkProgram(shaderProg);
-
-	//Clear the VS and FS objects
-	glDeleteShader(vs);
-	glDeleteShader(fs);
-	return shaderProg;
-}
-
-void PassVertices(vector <GLfloat>* a)
-{
-	glm::vec2 v;
-
-	for (GLuint i = 0; i < screenWidth; i++)
-	{
-		for (GLuint j = 0; j < screenHeight; j++)
-		{
-			v = glm::vec2(i, j);
-			a->push_back(v[0]);
-			a->push_back(v[1]);
-		}
-	}
-}
-
+/* Creates any particles necessary for the scene. */
 vector<Particle> CreateParticles(GLuint numParticles) {
 
 	vector<Particle> particles;
@@ -124,22 +62,15 @@ vector<Particle> CreateParticles(GLuint numParticles) {
 	for (int i = 0; i < numParticles; i++) {
 		Particle p;
 
-		p.position = glm::vec3(70, -88, 0);
-		p.radius = 10;
-		particles.push_back(p);
-
-		p.position = glm::vec3(140, 31, 0);
-		p.radius = 10;
-		particles.push_back(p);
-
-		p.position = glm::vec3(210, 150, 0);
-		p.radius = 10;
+		p.position = glm::vec3(0, 0, 0);
+		p.radius = 50;
 		particles.push_back(p);
 	}
 
 	return particles;
 }
 
+/* Creates any lights necessary to illuminate the scene. */
 vector<Light> CreateLights() {
 	Light l;
 
@@ -154,7 +85,7 @@ vector<Light> CreateLights() {
 /* Calculates the ray going through the pixel at the given location. */
 Ray CalculateRay(GLuint pixelWidth, GLuint pixelHeight) {
 
-	GLfloat fovy = glm::radians(45.0f);
+	GLfloat fovy = glm::radians(60.0f);
 	GLfloat aspectRatio = screenWidth / screenHeight;
 	GLfloat focalLength = 1.0f / tan(fovy / 2.0f);
 
@@ -203,9 +134,9 @@ GLfloat SphereIntersection(const Ray& ray, const Particle& particle) {
 }
 
 /* Finds the first surface intersected by the ray. */
-std::tuple<GLfloat, Particle> FindFirstIntersection(const Ray& ray) {
+tuple<GLfloat, Particle> FindFirstIntersection(const Ray& ray) {
 
-	GLfloat firstIntersection = std::numeric_limits<GLfloat>::infinity();
+	GLfloat firstIntersection = numeric_limits<GLfloat>::infinity();
 	Particle firstParticle;
 
 	for (const Particle& particle : particles) {
@@ -219,11 +150,11 @@ std::tuple<GLfloat, Particle> FindFirstIntersection(const Ray& ray) {
 	}
 
 	/* Indicates an invalid intersection TraceRay(). */
-	if (firstIntersection == std::numeric_limits<GLfloat>::infinity()) {
+	if (firstIntersection == numeric_limits<GLfloat>::infinity()) {
 		firstIntersection = -1.0f;
 	}
 
-	return std::tuple<GLfloat, Particle>(firstIntersection, firstParticle);
+	return tuple<GLfloat, Particle>(firstIntersection, firstParticle);
 }
 
 /* Calculates the normal vector for a sphere. */
@@ -236,9 +167,9 @@ glm::vec3 SphereNormal(const Ray& ray, const Particle& particle, GLfloat t) {
 }
 
 /* Returns a vector of all of the rays that are visible from the given point on the given surface. */
-std::vector<Light> ShadowRays(const Ray& ray, GLfloat t, const Particle& particle) {
+vector<Light> ShadowRays(const Ray& ray, GLfloat t, const Particle& particle) {
 
-	std::vector<Light> visibleLights;
+	vector<Light> visibleLights;
 	glm::vec3 intersection = ray.origin + (t * ray.direction);
 
 	for (Light& light : lights) {
@@ -272,9 +203,10 @@ glm::vec3 Phong(const Ray& ray, const Light& light, GLfloat t, const Particle& p
 	return color;
 }
 
+/* Determines whether to return the background color or the calculated Phong shading value per pixel. */
 glm::vec3 TraceRay(const Ray& ray) {
 
-	std::tuple<GLfloat, Particle> tuple = FindFirstIntersection(ray);
+	tuple<GLfloat, Particle> tuple = FindFirstIntersection(ray);
 	GLfloat t = get<0>(tuple);
 	Particle particle = get<1>(tuple);
 
@@ -282,7 +214,7 @@ glm::vec3 TraceRay(const Ray& ray) {
 		return background;
 	}
 
-	std::vector<Light> contributedLights = ShadowRays(ray, t, particle);
+	vector<Light> contributedLights = ShadowRays(ray, t, particle);
 	glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
 
 	for (Light& light : contributedLights) {
@@ -292,11 +224,12 @@ glm::vec3 TraceRay(const Ray& ray) {
 	return color;
 }
 
-vector<glm::vec3> RayCastOutput() {
+/* Create a vector of colors used for generating the final scene. */
+vector<glm::vec3> RayTraceOutput() {
 
 	glm::vec3 color;
 
-	colors.clear();
+	vector<glm::vec3> colors;
 
 	for (GLuint i = 0; i < screenWidth; i++)
 	{
@@ -306,8 +239,6 @@ vector<glm::vec3> RayCastOutput() {
 			glm::vec3 color = TraceRay(ray);
 			color = glm::clamp(color, 0.0f, 1.0f);
 
-			/* Pushing back twice, once for x and and once for y coordinate. */
-			colors.push_back(color);
 			colors.push_back(color);
 		}
 	}
@@ -315,20 +246,14 @@ vector<glm::vec3> RayCastOutput() {
 	return colors;
 }
 
-int main()
-{
-	glfwInit();
+int main() {
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_SAMPLES, 4);
+	glfwInit();
 
 	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "CS434 Final Project", NULL, NULL);
 
-	if (window == NULL)
-	{
+	if (window == NULL) {
+		cout << "Cannot open GLFW window" << endl;
 		glfwTerminate();
 		return -1;
 	}
@@ -336,88 +261,52 @@ int main()
 	glfwMakeContextCurrent(window);
 
 	gladLoadGL();
-	glEnable(GL_MULTISAMPLE);
-	glEnable(GL_BLEND);
-	glEnable(GL_TEXTURE_2D);
-
 	glViewport(0, 0, screenWidth, screenHeight);
-
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-
-	glBindVertexArray(VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-
-	vector <GLfloat> vertices;
-	PassVertices(&vertices);
-	GLuint points = vertices.size();
-	glBufferData(GL_ARRAY_BUFFER, points * sizeof(GLfloat), &vertices[0], GL_STATIC_DRAW);
-
-	glVertexAttribPointer((GLuint)0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(0);
-
-	vertices.clear();
-
-	int shaderProg = CompileShaders();
-	GLint modelviewParameter = glGetUniformLocation(shaderProg, "modelview");
-
-	glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
-	glUseProgram(shaderProg);
-
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	ImGui::StyleColorsDark();
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 330");
-
-	bool drawScene = true;
 
 	particles = CreateParticles(1);
 	lights = CreateLights();
 
-	/* Do not modify these. */
-	glm::mat4 proj = glm::perspective(glm::radians(45.0f), 1.0f, 0.01f, 1000.0f);
-	glm::mat4 view = glm::lookAt(glm::vec3(0, 0, -screenWidth * 0.7), glm::vec3(3, 3, 0), glm::vec3(0, 1, 0));
-	glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(0.0075));
+	vector<glm::vec3> colors;
+	colors = RayTraceOutput();
 
-	glm::mat4 modelView = proj * view * model;
-	glUniformMatrix4fv(modelviewParameter, 1, GL_FALSE, glm::value_ptr(modelView));
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_FLOAT, colors.data());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-	while (!glfwWindowShouldClose(window))
-	{
+	while (!glfwWindowShouldClose(window)) {
+
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		if (drawScene == true) {
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, texture);
 
-			glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBegin(GL_QUADS);
 
-			colors = RayCastOutput();
+		/* Interleaving texture coordinates and vertices. */
+		glTexCoord2f(0.0f, 0.0f); 
+		glVertex2f(-1.0f, -1.0f);
 
-			/* TODO: draw textured quad and print that. none of this pixel by pixel stuff. */
+		glTexCoord2f(1.0f, 0.0f); 
+		glVertex2f(1.0f, -1.0f);
 
-			/*for (int i = 0; i < points; i++) {
+		glTexCoord2f(1.0f, 1.0f); 
+		glVertex2f(1.0f, 1.0f);
 
-				GLfloat red = colors[i].r;
-				GLfloat green = colors[i].g;
-				GLfloat blue = colors[i].b;
+		glTexCoord2f(0.0f, 1.0f); 
+		glVertex2f(-1.0f, 1.0f);
 
-				glUniform4f(glGetUniformLocation(shaderProg, "color"), red, green, blue, 1.0f);
-				glDrawArrays(GL_POINTS, i, 1);
-			}*/
-			
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glEnd();
 
-		}
+		glDisable(GL_TEXTURE_2D);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);
-	glDeleteProgram(shaderProg);
-	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;
 }
+
