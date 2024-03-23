@@ -2,6 +2,7 @@
 #include <vector>
 #include <stdint.h>
 #include <tuple>
+#include <random>
 
 #include "glad/glad.h"
 #include "GLFW/glfw3.h"
@@ -16,14 +17,18 @@
 
 using namespace std;
 
+/* Generally 1000; reduce this number to speed up compilation time. */
+const int NUM_PARTICLES = 100;
+
 const int screenWidth = 800;
 const int screenHeight = 800;
-glm::vec3 background = glm::vec3(0, 0, 1);
+glm::vec3 background = glm::vec3(0.2f, 0.2f, 0.2f);
+glm::vec3 waterBackground = glm::vec3(0, 0, 0);
 
 /* Do not modify these as they are essential for ray tracing. */
 glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth * 0.6);
 glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
-glm::vec3 up = glm::vec3(-1.0f, 0.0f, 0.0f);
+glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
 const GLfloat EPSILON = 1e-2;
 
@@ -40,30 +45,47 @@ struct Light {
 
 struct Particle {
 	glm::vec3 position;
-	GLfloat radius = 0.0f;
+	glm::vec3 diff;
 
 	/* For now, these values are hard-coded. */
-	glm::vec3 diff = glm::vec3(0.0f, 0.0f, 1.0f);
-	glm::vec3 spec = glm::vec3(1.0f, 1.0f, 1.0f);
-	GLfloat shininess = 20.0f;
+	GLfloat radius = 30.0f;
+	glm::vec3 spec = glm::vec3(1.0f, 1.0f, 01.0f);
+	GLfloat shininess = 10.0f;
 };
 
 vector<Light> lights;
 vector<Particle> particles;
+vector<glm::vec3> colors;
+
+/* Generates the initial position for the particles that comprise the water. */
+glm::vec3 GeneratePosition() {
+
+	GLfloat xPos = 0.0f;
+	GLfloat yPos = 0.0f;
+	GLfloat zPos = 0.0f;
+
+	while (yPos <= -xPos) {
+		xPos = rand() % screenWidth - 300;
+		yPos = rand() % screenHeight - 600;
+		zPos = rand() % screenHeight - 100;
+	}
+
+	return glm::vec3(xPos - 100, yPos + 200, zPos);
+}
 
 /* Creates any particles necessary for the scene. */
 vector<Particle> CreateParticles(GLuint numParticles) {
 
 	vector<Particle> particles;
 
-	/* Initial particle range for particles with a radius of 10:
-		x: [70, 210], y: [-88, 150] */
+	srand(time(NULL));
+
+	Particle p;
 
 	for (int i = 0; i < numParticles; i++) {
-		Particle p;
 
-		p.position = glm::vec3(0, 0, 0);
-		p.radius = 50;
+		p.position = GeneratePosition();
+		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
 		particles.push_back(p);
 	}
 
@@ -72,11 +94,12 @@ vector<Particle> CreateParticles(GLuint numParticles) {
 
 /* Creates any lights necessary to illuminate the scene. */
 vector<Light> CreateLights() {
+
 	Light l;
 
-	l.position = glm::vec3(50, 50, 0);
-	l.diff = glm::vec3(2, 2, 2);
-	l.spec = glm::vec3(10, 10, 10);
+	l.position = glm::vec3(0.0f, 0.0f, -screenWidth * 0.5);
+	l.diff = glm::vec3(1, 1, 1);
+	l.spec = glm::vec3(0, 0, 0);
 
 	lights.push_back(l);
 	return lights;
@@ -249,6 +272,7 @@ vector<glm::vec3> RayTraceOutput() {
 int main() {
 
 	glfwInit();
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "CS434 Final Project", NULL, NULL);
 
@@ -263,10 +287,9 @@ int main() {
 	gladLoadGL();
 	glViewport(0, 0, screenWidth, screenHeight);
 
-	particles = CreateParticles(1);
+	particles = CreateParticles(NUM_PARTICLES);
 	lights = CreateLights();
 
-	vector<glm::vec3> colors;
 	colors = RayTraceOutput();
 
 	GLuint texture;
