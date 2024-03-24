@@ -17,16 +17,15 @@
 
 using namespace std;
 
-/* Generally 1000; reduce this number to speed up compilation time. */
-const int NUM_PARTICLES = 100;
+/* Reduce this number to speed up compilation time. */
+const int NUM_PARTICLES = 10;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
-glm::vec3 background = glm::vec3(0.2f, 0.2f, 0.2f);
-glm::vec3 waterBackground = glm::vec3(0, 0, 0);
+glm::vec3 background = glm::vec3(0.922, 0.851, 0.737);
 
 /* Do not modify these as they are essential for ray tracing. */
-glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth * 0.6);
+glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth);
 glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
@@ -48,7 +47,7 @@ struct Particle {
 	glm::vec3 diff;
 
 	/* For now, these values are hard-coded. */
-	GLfloat radius = 30.0f;
+	GLfloat radius = 50.0f;
 	glm::vec3 spec = glm::vec3(1.0f, 1.0f, 01.0f);
 	GLfloat shininess = 10.0f;
 };
@@ -60,17 +59,29 @@ vector<glm::vec3> colors;
 /* Generates the initial position for the particles that comprise the water. */
 glm::vec3 GeneratePosition() {
 
-	GLfloat xPos = 0.0f;
-	GLfloat yPos = 0.0f;
-	GLfloat zPos = 0.0f;
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	
+	float minX = -150.0f;
+	float maxX = 1000.0f;
+	float minY = -200.0f;
+	float maxY = 550.0f;
+	float minZ = 650.0f;
+	float maxZ = 1000.0f;
 
-	while (yPos <= -xPos) {
-		xPos = rand() % screenWidth - 300;
-		yPos = rand() % screenHeight - 600;
-		zPos = rand() % screenHeight - 100;
-	}
+	std::uniform_real_distribution<float> disX(minX, maxX);
+	std::uniform_real_distribution<float> disY(minY, maxY);
+	std::uniform_real_distribution<float> disZ(minZ, maxZ);
 
-	return glm::vec3(xPos - 100, yPos + 200, zPos);
+	float x, y;
+	do {
+		x = disX(gen);
+		y = disY(gen);
+	} while (!(x >= -2.0f * y + 800.0f && x <= 2.0f * y + 800.0f && x >= -150.0f));
+
+	return glm::vec3(x, y + 300, disZ(gen));
+
+
 }
 
 /* Creates any particles necessary for the scene. */
@@ -298,6 +309,8 @@ int main() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_FLOAT, colors.data());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	colors.clear();
 
 	while (!glfwWindowShouldClose(window)) {
 
