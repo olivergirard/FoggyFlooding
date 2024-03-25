@@ -17,8 +17,8 @@
 
 using namespace std;
 
-/* Reduce this number to speed up compilation time. */
-const int NUM_PARTICLES = 10;
+/* Reduce this number to speed up compilation time. Generally 250+. */
+const int NUM_PARTICLES = 250;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
@@ -62,10 +62,11 @@ glm::vec3 GeneratePosition() {
 	std::random_device rd;
 	std::mt19937 gen(rd());
 	
-	float minX = -150.0f;
+	/* Determines the shape of the water triangle. */
+	float minX = -450.0f;
 	float maxX = 1000.0f;
 	float minY = -200.0f;
-	float maxY = 550.0f;
+	float maxY = 900.0f;
 	float minZ = 650.0f;
 	float maxZ = 1000.0f;
 
@@ -73,14 +74,16 @@ glm::vec3 GeneratePosition() {
 	std::uniform_real_distribution<float> disY(minY, maxY);
 	std::uniform_real_distribution<float> disZ(minZ, maxZ);
 
-	float x, y;
-	do {
+	GLfloat x = disX(gen);
+	GLfloat y = disY(gen);
+	GLfloat z = disZ(gen);
+
+	while (x < (-2.0f * y + screenHeight)) {
 		x = disX(gen);
 		y = disY(gen);
-	} while (!(x >= -2.0f * y + 800.0f && x <= 2.0f * y + 800.0f && x >= -150.0f));
+	}
 
-	return glm::vec3(x, y + 300, disZ(gen));
-
+	return glm::vec3(x, y, z);
 
 }
 
