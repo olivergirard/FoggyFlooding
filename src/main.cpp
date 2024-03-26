@@ -18,7 +18,7 @@
 using namespace std;
 
 /* Reduce this number to speed up compilation time. Generally 250+. */
-const int NUM_PARTICLES = 250;
+const int NUM_PARTICLES = 500;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
@@ -57,7 +57,7 @@ vector<Particle> particles;
 vector<glm::vec3> colors;
 
 /* Generates the initial position for the particles that comprise the water. */
-glm::vec3 GeneratePosition() {
+glm::vec3 GenerateRightPosition() {
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
@@ -78,7 +78,37 @@ glm::vec3 GeneratePosition() {
 	GLfloat y = disY(gen);
 	GLfloat z = disZ(gen);
 
-	while (x < (-2.0f * y + screenHeight)) {
+	while (x < (-2.0f * y + 800)) {
+		x = disX(gen);
+		y = disY(gen);
+	}
+
+	return glm::vec3(x, y, z);
+
+}
+
+glm::vec3 GenerateLeftPosition() {
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+
+	/* Determines the shape of the water triangle. */
+	float minX = -100.0f;
+	float maxX = 1000.0f; //more negative, more up
+	float minY = -900.0f;
+	float maxY = 200.0f;
+	float minZ = 650.0f;
+	float maxZ = 1000.0f;
+
+	std::uniform_real_distribution<float> disX(minX, maxX);
+	std::uniform_real_distribution<float> disY(minY, maxY);
+	std::uniform_real_distribution<float> disZ(minZ, maxZ);
+
+	GLfloat x = disX(gen);
+	GLfloat y = disY(gen);
+	GLfloat z = disZ(gen);
+
+	while (y > (2.0f * x - 1200)) {
 		x = disX(gen);
 		y = disY(gen);
 	}
@@ -98,7 +128,13 @@ vector<Particle> CreateParticles(GLuint numParticles) {
 
 	for (int i = 0; i < numParticles; i++) {
 
-		p.position = GeneratePosition();
+		if (i % 2 == 0) {
+			p.position = GenerateRightPosition();
+		}
+		else {
+			p.position = GenerateLeftPosition();
+		}
+		
 		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
 		particles.push_back(p);
 	}
