@@ -4,21 +4,21 @@
 #include <tuple>
 #include <random>
 
-#include "glad/glad.h"
-#include "GLFW/glfw3.h"
-
-#include "glm/glm.hpp"
-#include "glm/gtc/type_ptr.hpp"
-#include "glm/gtc/matrix_transform.hpp"
+#include <GL/glew.h>
+#include <GL/freeglut.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp> 
 
 #include "ImGui/imgui.h"
 #include "ImGui/imgui_impl_glfw.h"
 #include "ImGui/imgui_impl_opengl3.h"
 
+#include "ProceduralCity.h"
+
 using namespace std;
 
-/* Reduce this number to speed up compilation time. Generally 250+. */
-const int NUM_PARTICLES = 500;
+/* Reduce this number to speed up compilation time. Generally 500+. */
+const int NUM_PARTICLES = 10;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
@@ -61,10 +61,10 @@ glm::vec3 GenerateRightPosition() {
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
-	
+
 	/* Determines the shape of the water triangle. */
 	float minX = -450.0f;
-	float maxX = 1000.0f;
+	float maxX = 1200.0f;
 	float minY = -200.0f;
 	float maxY = 900.0f;
 	float minZ = 650.0f;
@@ -134,7 +134,7 @@ vector<Particle> CreateParticles(GLuint numParticles) {
 		else {
 			p.position = GenerateLeftPosition();
 		}
-		
+
 		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
 		particles.push_back(p);
 	}
@@ -249,7 +249,7 @@ vector<Light> ShadowRays(const Ray& ray, GLfloat t, const Particle& particle) {
 
 		GLfloat distance = glm::length(light.position - intersection);
 		GLfloat t = SphereIntersection(ray, particle);
-		
+
 		/* If the distance from the intersection point to the light is less than the distance from the ray to the intersection point. */
 		if ((t > 0.0f) && (distance < t)) {
 			visibleLights.push_back(light);
@@ -319,23 +319,7 @@ vector<glm::vec3> RayTraceOutput() {
 	return colors;
 }
 
-int main() {
-
-	glfwInit();
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "CS434 Final Project", NULL, NULL);
-
-	if (window == NULL) {
-		cout << "Cannot open GLFW window" << endl;
-		glfwTerminate();
-		return -1;
-	}
-
-	glfwMakeContextCurrent(window);
-
-	gladLoadGL();
-	glViewport(0, 0, screenWidth, screenHeight);
+void DrawWaterParticles() {
 
 	particles = CreateParticles(NUM_PARTICLES);
 	lights = CreateLights();
@@ -351,37 +335,99 @@ int main() {
 
 	colors.clear();
 
-	while (!glfwWindowShouldClose(window)) {
+	glClear(GL_COLOR_BUFFER_BIT);
 
-		glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, texture);
 
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, texture);
+	glBegin(GL_QUADS);
 
-		glBegin(GL_QUADS);
+	/* Interleaving texture coordinates and vertices. */
+	glTexCoord2f(0.0f, 0.0f);
+	glVertex2f(-1.0f, -1.0f);
 
-		/* Interleaving texture coordinates and vertices. */
-		glTexCoord2f(0.0f, 0.0f); 
-		glVertex2f(-1.0f, -1.0f);
+	glTexCoord2f(1.0f, 0.0f);
+	glVertex2f(1.0f, -1.0f);
 
-		glTexCoord2f(1.0f, 0.0f); 
-		glVertex2f(1.0f, -1.0f);
+	glTexCoord2f(1.0f, 1.0f);
+	glVertex2f(1.0f, 1.0f);
 
-		glTexCoord2f(1.0f, 1.0f); 
-		glVertex2f(1.0f, 1.0f);
+	glTexCoord2f(0.0f, 1.0f);
+	glVertex2f(-1.0f, 1.0f);
 
-		glTexCoord2f(0.0f, 1.0f); 
-		glVertex2f(-1.0f, 1.0f);
+	glEnd();
 
-		glEnd();
+	glDisable(GL_TEXTURE_2D);
 
-		glDisable(GL_TEXTURE_2D);
+	glutSwapBuffers();
+}
 
-		glfwSwapBuffers(window);
-		glfwPollEvents();
+void DrawCity() {
+	// Step 1: Create Framebuffer Object (FBO)
+	GLuint fbo;
+	glGenFramebuffers(1, &fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+	// Step 2: Create a Texture
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+
+	// Step 3: Render Scene to Texture
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glViewport(0, 0, screenWidth, screenHeight);
+	glutDisplayFunc(show); // Render the scene to the texture
+
+	// Step 4: Render Quad to Screen
+	glBindFramebuffer(GL_FRAMEBUFFER, 0); // Bind default framebuffer
+
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0f, 0.0f);
+	glVertex2f(-1.0f, -1.0f);
+
+	glTexCoord2f(1.0f, 0.0f);
+	glVertex2f(1.0f, -1.0f);
+
+	glTexCoord2f(1.0f, 1.0f);
+	glVertex2f(1.0f, 1.0f);
+
+	glTexCoord2f(0.0f, 1.0f);
+	glVertex2f(-1.0f, 1.0f);
+	glEnd();
+
+	glutSwapBuffers();
+}
+
+/* Final display function. */
+void Display() {
+
+	glViewport(0, 0, screenWidth, screenHeight);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	DrawCity();
+
+	DrawWaterParticles();
+	glutSwapBuffers();
+}
+
+int main(int argc, char* argv[]) {
+
+	glutInit(&argc, argv);
+	glutInitWindowSize(800, 800);
+	glutCreateWindow("CS434 Final Project");
+
+	if (glewInit() != GLEW_OK) {
+		cerr << "Failed to initialize GLEW." << endl;
+		exit(-1);
 	}
 
-	glfwTerminate();
-	return 0;
+	glutDisplayFunc(Display);
+	glutMainLoop();
 }
 
