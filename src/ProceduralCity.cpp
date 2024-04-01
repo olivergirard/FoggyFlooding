@@ -59,7 +59,7 @@ void SetupLighting() {
     glEnable(GL_LIGHT0);
 
     GLfloat light_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-    GLfloat light_diffuse[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+    GLfloat light_diffuse[] = { 5.0f, 5.0f, 5.0f, 1.0f };
     GLfloat light_position[] = { 1.0f, 1.0f, 1.0f, 0.0f };
 
     glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);

@@ -14,6 +14,7 @@
 #include "ImGui/imgui_impl_opengl3.h"
 
 #include "ProceduralCity.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 using namespace std;
 
@@ -22,7 +23,7 @@ const int NUM_PARTICLES = 10;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
-glm::vec3 background = glm::vec3(0.922, 0.851, 0.737);
+glm::vec4 background = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 
 /* Do not modify these as they are essential for ray tracing. */
 glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth);
@@ -54,7 +55,9 @@ struct Particle {
 
 vector<Light> lights;
 vector<Particle> particles;
-vector<glm::vec3> colors;
+vector<glm::vec4> colors;
+
+
 
 /* Generates the initial position for the particles that comprise the water. */
 glm::vec3 GenerateRightPosition() {
@@ -277,7 +280,7 @@ glm::vec3 Phong(const Ray& ray, const Light& light, GLfloat t, const Particle& p
 }
 
 /* Determines whether to return the background color or the calculated Phong shading value per pixel. */
-glm::vec3 TraceRay(const Ray& ray) {
+glm::vec4 TraceRay(const Ray& ray) {
 
 	tuple<GLfloat, Particle> tuple = FindFirstIntersection(ray);
 	GLfloat t = get<0>(tuple);
@@ -294,22 +297,22 @@ glm::vec3 TraceRay(const Ray& ray) {
 		color += Phong(ray, light, t, particle);
 	}
 
-	return color;
+	return glm::vec4(color, 1.0f);
 }
 
 /* Create a vector of colors used for generating the final scene. */
-vector<glm::vec3> RayTraceOutput() {
+vector<glm::vec4> RayTraceOutput() {
 
-	glm::vec3 color;
+	glm::vec4 color;
 
-	vector<glm::vec3> colors;
+	vector<glm::vec4> colors;
 
 	for (GLuint i = 0; i < screenWidth; i++)
 	{
 		for (GLuint j = 0; j < screenHeight; j++)
 		{
 			Ray ray = CalculateRay(i, j);
-			glm::vec3 color = TraceRay(ray);
+			glm::vec4 color = TraceRay(ray);
 			color = glm::clamp(color, 0.0f, 1.0f);
 
 			colors.push_back(color);
@@ -319,30 +322,38 @@ vector<glm::vec3> RayTraceOutput() {
 	return colors;
 }
 
+/* Draws the water particles over the city. */
 void DrawWaterParticles() {
 
 	particles = CreateParticles(NUM_PARTICLES);
 	lights = CreateLights();
-
 	colors = RayTraceOutput();
 
 	GLuint texture;
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_FLOAT, colors.data());
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, colors.data());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 	colors.clear();
 
-	glClear(GL_COLOR_BUFFER_BIT);
-
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texture);
 
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glPushMatrix();
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	/* Drawing the water particles. */
 	glBegin(GL_QUADS);
 
-	/* Interleaving texture coordinates and vertices. */
 	glTexCoord2f(0.0f, 0.0f);
 	glVertex2f(-1.0f, -1.0f);
 
@@ -355,67 +366,89 @@ void DrawWaterParticles() {
 	glTexCoord2f(0.0f, 1.0f);
 	glVertex2f(-1.0f, 1.0f);
 
+	glEnd();
+
+	glPopMatrix();
+
+	glDisable(GL_BLEND);
+	glDisable(GL_TEXTURE_2D);
+}
+
+/* Draws the city behind the water particles. */
+void DrawCity() {
+
+	GLuint framebuffer;
+	glGenFramebuffers(1, &framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+	GLuint cityTexture;
+	glGenTextures(1, &cityTexture);
+	glBindTexture(GL_TEXTURE_2D, cityTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cityTexture, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+	glViewport(0, 0, screenWidth, screenHeight);
+	show();
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glViewport(0, 0, screenWidth, screenHeight);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0.0f, screenWidth, 0.0f, screenHeight, -1.0f, 1.0f);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glBindTexture(GL_TEXTURE_2D, cityTexture);
+	glEnable(GL_TEXTURE_2D);
+
+	/* Drawing the city. */
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0f, 0.0f);
+	glVertex2f(0.0f, 0.0f);
+
+	glTexCoord2f(1.0f, 0.0f);
+	glVertex2f(screenWidth, 0.0f);
+
+	glTexCoord2f(1.0f, 1.0f);
+	glVertex2f(screenWidth, screenHeight);
+
+	glTexCoord2f(0.0f, 1.0f);
+	glVertex2f(0.0f, screenHeight);
 	glEnd();
 
 	glDisable(GL_TEXTURE_2D);
-
-	glutSwapBuffers();
 }
 
-void DrawCity() {
-	// Step 1: Create Framebuffer Object (FBO)
-	GLuint fbo;
-	glGenFramebuffers(1, &fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-	// Step 2: Create a Texture
-	GLuint texture;
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-
-	// Step 3: Render Scene to Texture
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	glViewport(0, 0, screenWidth, screenHeight);
-	glutDisplayFunc(show); // Render the scene to the texture
-
-	// Step 4: Render Quad to Screen
-	glBindFramebuffer(GL_FRAMEBUFFER, 0); // Bind default framebuffer
-
-	glBindTexture(GL_TEXTURE_2D, texture);
-
-	glBegin(GL_QUADS);
-	glTexCoord2f(0.0f, 0.0f);
-	glVertex2f(-1.0f, -1.0f);
-
-	glTexCoord2f(1.0f, 0.0f);
-	glVertex2f(1.0f, -1.0f);
-
-	glTexCoord2f(1.0f, 1.0f);
-	glVertex2f(1.0f, 1.0f);
-
-	glTexCoord2f(0.0f, 1.0f);
-	glVertex2f(-1.0f, 1.0f);
-	glEnd();
-
-	glutSwapBuffers();
-}
-
-/* Final display function. */
+/* Final display function for showing the city, water, and fog. */
 void Display() {
 
-	glViewport(0, 0, screenWidth, screenHeight);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glViewport(0, 0, screenWidth, screenHeight);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	DrawCity();
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	DrawWaterParticles();
-	glutSwapBuffers();
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+
+    DrawCity();
+    DrawWaterParticles();
+
+    glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+
+    glutSwapBuffers();
 }
 
+/* Main function. */
 int main(int argc, char* argv[]) {
 
 	glutInit(&argc, argv);
