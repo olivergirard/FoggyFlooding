@@ -8,25 +8,25 @@
 #include <GL/freeglut.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp> 
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "ImGui/imgui.h"
-#include "ImGui/imgui_impl_glfw.h"
-#include "ImGui/imgui_impl_opengl3.h"
+#include "ImGui/imgui_impl_glut.h"
+#include "ImGui/imgui_impl_opengl2.h"
 
 #include "ProceduralCity.h"
-#include <glm/gtc/matrix_transform.hpp>
 
 using namespace std;
 
 /* Reduce this number to speed up compilation time. Generally 500+. */
-const int NUM_PARTICLES = 10;
+const int NUM_PARTICLES = 600;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
 glm::vec4 background = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 
 /* Do not modify these as they are essential for ray tracing. */
-glm::vec3 eye = glm::vec3(0.0f, 0.0f, -screenWidth);
+glm::vec3 eye = glm::vec3(40.0f, 25.0f, 25.0f);
 glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
@@ -43,21 +43,12 @@ struct Light {
 	glm::vec3 spec;
 };
 
-struct Particle {
-	glm::vec3 position;
-	glm::vec3 diff;
-
-	/* For now, these values are hard-coded. */
-	GLfloat radius = 50.0f;
-	glm::vec3 spec = glm::vec3(1.0f, 1.0f, 01.0f);
-	GLfloat shininess = 10.0f;
-};
-
+GLuint cityTexture;
 vector<Light> lights;
-vector<Particle> particles;
+vector<Surface> particles;
 vector<glm::vec4> colors;
-
-
+vector<Surface> buildings;
+vector<Surface> surfaces;
 
 /* Generates the initial position for the particles that comprise the water. */
 glm::vec3 GenerateRightPosition() {
@@ -121,15 +112,15 @@ glm::vec3 GenerateLeftPosition() {
 }
 
 /* Creates any particles necessary for the scene. */
-vector<Particle> CreateParticles(GLuint numParticles) {
+vector<Surface> CreateParticles(GLuint numParticles) {
 
-	vector<Particle> particles;
+	vector<Surface> particles;
 
 	srand(time(NULL));
 
-	Particle p;
+	Surface p;
 
-	for (int i = 0; i < numParticles; i++) {
+	/*for (int i = 0; i < numParticles; i++) {
 
 		if (i % 2 == 0) {
 			p.position = GenerateRightPosition();
@@ -139,8 +130,27 @@ vector<Particle> CreateParticles(GLuint numParticles) {
 		}
 
 		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
+		p.type = SPHERE;
 		particles.push_back(p);
-	}
+	}*/
+
+	/*p.position = glm::vec3(0, 0, -2);
+	p.radius = 10.0f;
+	p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
+	p.type = SPHERE;
+	particles.push_back(p);*/
+
+	p.position = glm::vec3(-20, 0, 0);
+	p.radius = 5.0f;
+	p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
+	p.type = SPHERE;
+	particles.push_back(p);
+
+	p.position = glm::vec3(20, 10, 0);
+	p.radius = 5.0f;
+	p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
+	p.type = SPHERE;
+	particles.push_back(p);
 
 	return particles;
 }
@@ -150,7 +160,7 @@ vector<Light> CreateLights() {
 
 	Light l;
 
-	l.position = glm::vec3(0.0f, 0.0f, -screenWidth * 0.5);
+	l.position = glm::vec3(-5.0f, 10.0f, 10.0f);
 	l.diff = glm::vec3(1, 1, 1);
 	l.spec = glm::vec3(0, 0, 0);
 
@@ -161,7 +171,7 @@ vector<Light> CreateLights() {
 /* Calculates the ray going through the pixel at the given location. */
 Ray CalculateRay(GLuint pixelWidth, GLuint pixelHeight) {
 
-	GLfloat fovy = glm::radians(60.0f);
+	GLfloat fovy = 45.0f;
 	GLfloat aspectRatio = screenWidth / screenHeight;
 	GLfloat focalLength = 1.0f / tan(fovy / 2.0f);
 
@@ -180,7 +190,7 @@ Ray CalculateRay(GLuint pixelWidth, GLuint pixelHeight) {
 }
 
 /* Calculates ray-sphere intersection and returns the associated t value. */
-GLfloat SphereIntersection(const Ray& ray, const Particle& particle) {
+GLfloat SphereIntersection(const Ray& ray, const Surface& particle) {
 
 	GLfloat a = glm::dot(ray.direction, ray.direction);
 	GLfloat b = 2.0f * glm::dot(ray.origin - particle.position, ray.direction);
@@ -209,32 +219,76 @@ GLfloat SphereIntersection(const Ray& ray, const Particle& particle) {
 	return -1.0f;
 }
 
+/* Calculates ray-triangle intersection and returns the associated t value. */
+GLfloat TriangleIntersection(const Ray& ray, glm::vec3 pos1, glm::vec3 pos2, glm::vec3 pos3) {
+
+	glm::vec3 p = pos2 - pos1;
+	glm::vec3 q = pos3 - pos1;
+
+	glm::vec3 temp = glm::cross(ray.direction, q);
+	GLfloat dot = glm::dot(p, temp);
+
+	if ((dot < EPSILON) && (dot > -EPSILON)) {
+		return -1.0f;
+	}
+
+	GLfloat f = 1.0f / dot;
+	glm::vec3 s = ray.origin - pos1;
+	GLfloat u = f * glm::dot(s, temp);
+
+	if ((u < 0.0f) || (u > 1.0f)) {
+		return -1.0f;
+	}
+
+	temp = glm::cross(s, p);
+	GLfloat v = f * glm::dot(ray.direction, temp);
+
+	if ((v < 0.0f) || ((u + v) > 1.0f)) {
+		return -1.0f;
+	}
+
+	GLfloat t = f * glm::dot(q, temp);
+	return t;
+}
+
 /* Finds the first surface intersected by the ray. */
-tuple<GLfloat, Particle> FindFirstIntersection(const Ray& ray) {
+std::tuple<GLfloat, Surface> FindFirstIntersection(const Ray& ray) {
 
-	GLfloat firstIntersection = numeric_limits<GLfloat>::infinity();
-	Particle firstParticle;
+	GLfloat firstIntersection = std::numeric_limits<GLfloat>::infinity();
+	Surface firstSurface;
 
-	for (const Particle& particle : particles) {
+	for (const Surface& surface : surfaces) {
 
-		GLfloat intersection = SphereIntersection(ray, particle);
+		GLfloat intersection = -1.0f;
+
+		if (surface.type == SPHERE) {
+			intersection = SphereIntersection(ray, surface);
+		}
+		else if (surface.type == QUAD) {
+			intersection = TriangleIntersection(ray, surface.pos1, surface.pos2, surface.pos3);
+
+			/* If there was no intersection, check the other triangle making up the quad. */
+			if (intersection < 0.0f) {
+				intersection = TriangleIntersection(ray, surface.pos2, surface.pos4, surface.pos3);
+			}
+		}
 
 		if ((intersection > 0.0f) && (intersection < firstIntersection)) {
 			firstIntersection = intersection;
-			firstParticle = particle;
+			firstSurface = surface;
 		}
 	}
 
 	/* Indicates an invalid intersection TraceRay(). */
-	if (firstIntersection == numeric_limits<GLfloat>::infinity()) {
+	if (firstIntersection == std::numeric_limits<GLfloat>::infinity()) {
 		firstIntersection = -1.0f;
 	}
 
-	return tuple<GLfloat, Particle>(firstIntersection, firstParticle);
+	return std::tuple<GLfloat, Surface>(firstIntersection, firstSurface);
 }
 
 /* Calculates the normal vector for a sphere. */
-glm::vec3 SphereNormal(const Ray& ray, const Particle& particle, GLfloat t) {
+glm::vec3 SphereNormal(const Ray& ray, const Surface& particle, GLfloat t) {
 
 	glm::vec3 intersection = ray.origin + (t * ray.direction);
 	glm::vec3 normal = glm::normalize(intersection - particle.position);
@@ -242,16 +296,36 @@ glm::vec3 SphereNormal(const Ray& ray, const Particle& particle, GLfloat t) {
 	return normal;
 }
 
-/* Returns a vector of all of the rays that are visible from the given point on the given surface. */
-vector<Light> ShadowRays(const Ray& ray, GLfloat t, const Particle& particle) {
+/* Calculates the normal vector for a triangle. */
+glm::vec3 TriangleNormal(const Ray& ray, const Surface& triangle) {
 
-	vector<Light> visibleLights;
+	glm::vec3 normal = glm::cross(triangle.pos3 - triangle.pos1, triangle.pos2 - triangle.pos1);
+	normal = glm::normalize(normal);
+
+	return normal;
+}
+
+/* Returns a vector of all of the rays that are visible from the given point on the given surface. */
+std::vector<Light> ShadowRays(const Ray& ray, GLfloat t, const Surface& surface) {
+
+	std::vector<Light> visibleLights;
 	glm::vec3 intersection = ray.origin + (t * ray.direction);
 
 	for (Light& light : lights) {
 
 		GLfloat distance = glm::length(light.position - intersection);
-		GLfloat t = SphereIntersection(ray, particle);
+		GLfloat t = -1.0f;
+
+		if (surface.type == SPHERE) {
+			t = SphereIntersection(ray, surface);
+		}
+		else if (surface.type == QUAD) {
+			t = TriangleIntersection(ray, surface.pos1, surface.pos2, surface.pos3);
+
+			if (t < 0.0f) {
+				t = TriangleIntersection(ray, surface.pos2, surface.pos4, surface.pos3);
+			}
+		}
 
 		/* If the distance from the intersection point to the light is less than the distance from the ray to the intersection point. */
 		if ((t > 0.0f) && (distance < t)) {
@@ -263,17 +337,17 @@ vector<Light> ShadowRays(const Ray& ray, GLfloat t, const Particle& particle) {
 }
 
 /* Calculates the color associated with Phong shading for the given point on the surface. */
-glm::vec3 Phong(const Ray& ray, const Light& light, GLfloat t, const Particle& particle) {
+glm::vec3 Phong(const Ray& ray, const Light& light, GLfloat t, const Surface& surface) {
 
 	glm::vec3 intersection = ray.origin + (ray.direction * t);
-	glm::vec3 normal = SphereNormal(ray, particle, t);
+	glm::vec3 normal = SphereNormal(ray, surface, t);
 
 	glm::vec3 lightRay = glm::normalize(light.position - intersection);
 	glm::vec3 reflectedRay = glm::reflect(lightRay, normal);
 	glm::vec3 viewRay = -ray.direction;
 
-	glm::vec3 diffuse = particle.diff * glm::dot(lightRay, normal) * light.diff;
-	glm::vec3 specular = particle.spec * pow(glm::dot(reflectedRay, viewRay), particle.shininess) * light.spec;
+	glm::vec3 diffuse = surface.diff * glm::dot(lightRay, normal) * light.diff;
+	glm::vec3 specular = surface.spec * pow(glm::dot(reflectedRay, viewRay), surface.shininess) * light.spec;
 
 	glm::vec3 color = diffuse + specular;
 	return color;
@@ -282,11 +356,11 @@ glm::vec3 Phong(const Ray& ray, const Light& light, GLfloat t, const Particle& p
 /* Determines whether to return the background color or the calculated Phong shading value per pixel. */
 glm::vec4 TraceRay(const Ray& ray) {
 
-	tuple<GLfloat, Particle> tuple = FindFirstIntersection(ray);
+	tuple<GLfloat, Surface> tuple = FindFirstIntersection(ray);
 	GLfloat t = get<0>(tuple);
-	Particle particle = get<1>(tuple);
+	Surface particle = get<1>(tuple);
 
-	if (t < 0.0f) {
+	if ((t < 0.0f) || (particle.type == QUAD)) { // or quad
 		return background;
 	}
 
@@ -325,7 +399,13 @@ vector<glm::vec4> RayTraceOutput() {
 /* Draws the water particles over the city. */
 void DrawWaterParticles() {
 
+	buildings = BuildingWalls();
+
 	particles = CreateParticles(NUM_PARTICLES);
+
+	surfaces = particles;
+	surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
+
 	lights = CreateLights();
 	colors = RayTraceOutput();
 
@@ -344,12 +424,15 @@ void DrawWaterParticles() {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	glPushMatrix();
-
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
+
+	glScalef(-1.0f, 1.0f, 1.0f);
+	glTranslatef(0.0f, 0.0f, 0.0f);
+	glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+	glScalef(1.333, 1.333, 1.333);
 
 	/* Drawing the water particles. */
 	glBegin(GL_QUADS);
@@ -381,7 +464,6 @@ void DrawCity() {
 	glGenFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-	GLuint cityTexture;
 	glGenTextures(1, &cityTexture);
 	glBindTexture(GL_TEXTURE_2D, cityTexture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -428,31 +510,53 @@ void DrawCity() {
 }
 
 /* Final display function for showing the city, water, and fog. */
-void Display() {
+void InitDisplay() {
 
-    glViewport(0, 0, screenWidth, screenHeight);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glViewport(0, 0, screenWidth, screenHeight);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
-    DrawCity();
-    DrawWaterParticles();
+	/* Determining the city building boundaries. */
+	
+	DrawCity();
+	DrawWaterParticles();
 
-    glDisable(GL_BLEND);
+	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
 
-    glutSwapBuffers();
+	glutSwapBuffers();
 }
 
-/* Main function. */
-int main(int argc, char* argv[]) {
+void MainLoopStep()
+{
+	ImGui_ImplOpenGL2_NewFrame();
+	ImGui_ImplGLUT_NewFrame();
+	ImGui::NewFrame();
+	ImGuiIO& io = ImGui::GetIO();
 
+	ImGui::Begin("Hello, world!");
+	ImGui::Text("This is some useful text.");
+	ImGui::End();
+
+	ImGui::Render();
+
+	glViewport(0, 0, screenWidth, screenHeight);
+
+	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+
+	glutSwapBuffers();
+	glutPostRedisplay();
+}
+
+int main(int argc, char** argv)
+{
 	glutInit(&argc, argv);
-	glutInitWindowSize(800, 800);
+	glutInitWindowSize(screenWidth, screenHeight);
 	glutCreateWindow("CS434 Final Project");
 
 	if (glewInit() != GLEW_OK) {
@@ -460,7 +564,26 @@ int main(int argc, char* argv[]) {
 		exit(-1);
 	}
 
-	glutDisplayFunc(Display);
-	glutMainLoop();
-}
+	InitDisplay();
 
+	glutDisplayFunc(MainLoopStep);
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+	ImGui::StyleColorsDark();
+
+	ImGui_ImplGLUT_Init();
+	ImGui_ImplOpenGL2_Init();
+	ImGui_ImplGLUT_InstallFuncs();
+
+	glutMainLoop();
+
+	ImGui_ImplOpenGL2_Shutdown();
+	ImGui_ImplGLUT_Shutdown();
+	ImGui::DestroyContext();
+
+	return 0;
+}
