@@ -12,7 +12,7 @@ using namespace std;
 
 std::vector<std::vector<double>> buildingPos;
 std::vector<double> heights;
-const int buildingNum = 40;
+const int buildingNum = 20;
 unsigned int buildingTexture;
 
 typedef enum { QUAD, SPHERE } typeOfSurface;
@@ -84,7 +84,7 @@ void SetupLighting() {
 
 	GLfloat light_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
 	GLfloat light_diffuse[] = { 15.0f, 15.0f, 15.0f, 1.0f };
-	GLfloat light_position[] = { 0.0f, 0.0f, 10.0f, 1.0f };
+	GLfloat light_position[] = { 1.0f, 1.0f, 1.0f, 0.0f };
 
 	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
 	glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
@@ -131,10 +131,19 @@ void draw(const std::vector<std::vector<double>>& buildingPositions, const std::
 		glDisable(GL_TEXTURE_2D);
 	}
 
+	/* Building the sandy floor. */
+	glBegin(GL_QUADS);
+	glColor3f(0.962f, 0.918f, 0.861f);
+	glVertex3f(-10.0f, 10.0f, -10.0f);
+	glVertex3f(40.0f, 10.0f, -10.0f);
+	glVertex3f(40.0f, 10.0f, 30.0f);
+	glVertex3f(-10.0f, 10.0f, 30.0f);
+	glEnd();
+
 	glBegin(GL_QUADS);
 	for (size_t i = 0; i < buildingPositions.size(); ++i) {
 		double posX = buildingPositions[i][0];
-		double posY = 10.0; // Base height of the building
+		double posY = 10.0;
 		double posZ = buildingPositions[i][1];
 		double height = buildingHeights[i];
 
@@ -173,14 +182,9 @@ void draw(const std::vector<std::vector<double>>& buildingPositions, const std::
 						su.pos4 = glm::vec3(vBuilding[quad[j][k]][0] + posX, vBuilding[quad[j][k]][1] * height + posY, vBuilding[quad[j][k]][2] + posZ); 
 						break;
 				}
-
-				if ((j != 3) && (j != 4)) {
-					glColor3f(0, 0, 0);
-				}
 				
 				glTexCoord2fv(texCoords);
-				glVertex3f(vBuilding[quad[j][k]][0] + posX, vBuilding[quad[j][k]][1] * height + posY, vBuilding[quad[j][k]][2] + posZ); // Adjust y-coordinate to use height
-
+				glVertex3f(vBuilding[quad[j][k]][0] + posX, vBuilding[quad[j][k]][1] * height + posY, vBuilding[quad[j][k]][2] + posZ);
 				glColor3f(1.0f, 1.0f, 1.0f);
 
 			}
@@ -200,7 +204,6 @@ void positions() {
 	buildingPos.clear();
 	heights.clear();
 
-	//double customHeights[] = { 0.3, 0.2, 0.5, 1.0, 2.0 };
 	double customHeights[] = { 2, 4, 6, 8, 10 };
 
 	for (int i = 0; i < buildingNum; i++) {
@@ -265,24 +268,15 @@ void Load(unsigned int& textureID, const char* filename) {
 void show() {
 
 	SetupCamera();
-	//SetupLighting();
+	SetupLighting();
 
-	glClearColor(0, 1, 1, 1.0f);
+	glClearColor(0.537, 0.835, 0.922, 1.0f);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
 
 	Load(buildingTexture, "textures/Building.bmp");
-
-	// Generate ground plane and draw the buildings
-	/*GLfloat groundX = 25.0f;
-	GLfloat groundY = 1.0f;
-	GLfloat groundZ = 25.0f;
-
-	glPushMatrix();
-
-	glScalef(groundX, groundY, groundZ);
-	glTranslatef(0.0f, -0.5f / groundY, 0.0f);*/
 
 	draw(buildingPos, heights, false);
 
@@ -290,6 +284,8 @@ void show() {
 
 	positions();
 	procedural();
+
+	glDisable(GL_DEPTH_TEST);
 
 	glutSwapBuffers();
 }

@@ -18,8 +18,8 @@
 
 using namespace std;
 
-/* Reduce this number to speed up compilation time. Generally 500+. */
-const int NUM_PARTICLES = 600;
+/* Reduce this number to speed up compilation time. */
+const int NUM_PARTICLES = 200;
 
 const int screenWidth = 800;
 const int screenHeight = 800;
@@ -31,6 +31,10 @@ glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
 const GLfloat EPSILON = 1e-2;
+
+bool timeToRender = false;
+int frameCount = 3;
+int currentFrameIndex = 0;
 
 struct Ray {
 	glm::vec3 origin;
@@ -44,71 +48,34 @@ struct Light {
 };
 
 GLuint cityTexture;
+
 vector<Light> lights;
 vector<Surface> particles;
 vector<glm::vec4> colors;
 vector<Surface> buildings;
 vector<Surface> surfaces;
 
+vector<unsigned char*> frames;
+
 /* Generates the initial position for the particles that comprise the water. */
-glm::vec3 GenerateRightPosition() {
+glm::vec3 GeneratePosition() {
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
 
 	/* Determines the shape of the water triangle. */
-	float minX = -450.0f;
-	float maxX = 1200.0f;
-	float minY = -200.0f;
-	float maxY = 900.0f;
-	float minZ = 650.0f;
-	float maxZ = 1000.0f;
+	float minX = 10.0f; //decreasing x floods the city
+	float maxX = 30.0f;
+	float minZ = -30.0f;
+	float maxZ = 30.0f;
 
 	std::uniform_real_distribution<float> disX(minX, maxX);
-	std::uniform_real_distribution<float> disY(minY, maxY);
 	std::uniform_real_distribution<float> disZ(minZ, maxZ);
 
 	GLfloat x = disX(gen);
-	GLfloat y = disY(gen);
 	GLfloat z = disZ(gen);
 
-	while (x < (-2.0f * y + 800)) {
-		x = disX(gen);
-		y = disY(gen);
-	}
-
-	return glm::vec3(x, y, z);
-
-}
-
-glm::vec3 GenerateLeftPosition() {
-
-	std::random_device rd;
-	std::mt19937 gen(rd());
-
-	/* Determines the shape of the water triangle. */
-	float minX = -100.0f;
-	float maxX = 1000.0f; //more negative, more up
-	float minY = -900.0f;
-	float maxY = 200.0f;
-	float minZ = 650.0f;
-	float maxZ = 1000.0f;
-
-	std::uniform_real_distribution<float> disX(minX, maxX);
-	std::uniform_real_distribution<float> disY(minY, maxY);
-	std::uniform_real_distribution<float> disZ(minZ, maxZ);
-
-	GLfloat x = disX(gen);
-	GLfloat y = disY(gen);
-	GLfloat z = disZ(gen);
-
-	while (y > (2.0f * x - 1200)) {
-		x = disX(gen);
-		y = disY(gen);
-	}
-
-	return glm::vec3(x, y, z);
-
+	return glm::vec3(x, 0, z);
 }
 
 /* Creates any particles necessary for the scene. */
@@ -120,37 +87,15 @@ vector<Surface> CreateParticles(GLuint numParticles) {
 
 	Surface p;
 
-	/*for (int i = 0; i < numParticles; i++) {
+	for (int i = 0; i < numParticles; i++) {
 
-		if (i % 2 == 0) {
-			p.position = GenerateRightPosition();
-		}
-		else {
-			p.position = GenerateLeftPosition();
-		}
+		p.position = GeneratePosition();
 
 		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
 		p.type = SPHERE;
+		p.radius = 1.0f;
 		particles.push_back(p);
-	}*/
-
-	/*p.position = glm::vec3(0, 0, -2);
-	p.radius = 10.0f;
-	p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
-	p.type = SPHERE;
-	particles.push_back(p);*/
-
-	p.position = glm::vec3(-20, 0, 0);
-	p.radius = 5.0f;
-	p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
-	p.type = SPHERE;
-	particles.push_back(p);
-
-	p.position = glm::vec3(20, 10, 0);
-	p.radius = 5.0f;
-	p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
-	p.type = SPHERE;
-	particles.push_back(p);
+	}
 
 	return particles;
 }
@@ -399,14 +344,6 @@ vector<glm::vec4> RayTraceOutput() {
 /* Draws the water particles over the city. */
 void DrawWaterParticles() {
 
-	buildings = BuildingWalls();
-
-	particles = CreateParticles(NUM_PARTICLES);
-
-	surfaces = particles;
-	surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
-
-	lights = CreateLights();
 	colors = RayTraceOutput();
 
 	GLuint texture;
@@ -433,6 +370,9 @@ void DrawWaterParticles() {
 	glTranslatef(0.0f, 0.0f, 0.0f);
 	glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
 	glScalef(1.333, 1.333, 1.333);
+
+	glDisable(GL_LIGHTING);
+	glDisable(GL_LIGHT0);
 
 	/* Drawing the water particles. */
 	glBegin(GL_QUADS);
@@ -509,6 +449,37 @@ void DrawCity() {
 	glDisable(GL_TEXTURE_2D);
 }
 
+/* Drawing the preexisting city. */
+void DrawCityFromTexture() {
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0.0f, screenWidth, 0.0f, screenHeight, -1.0f, 1.0f);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, cityTexture);
+
+	/* Drawing the city using the cityTexture. */
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0f, 0.0f);
+	glVertex2f(0.0f, 0.0f);
+
+	glTexCoord2f(1.0f, 0.0f);
+	glVertex2f(screenWidth, 0.0f);
+
+	glTexCoord2f(1.0f, 1.0f);
+	glVertex2f(screenWidth, screenHeight);
+
+	glTexCoord2f(0.0f, 1.0f);
+	glVertex2f(0.0f, screenHeight);
+	glEnd();
+
+	glDisable(GL_TEXTURE_2D);
+}
+
 /* Final display function for showing the city, water, and fog. */
 void InitDisplay() {
 
@@ -521,10 +492,27 @@ void InitDisplay() {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
-	/* Determining the city building boundaries. */
-	
-	DrawCity();
+	if (timeToRender == false) {
+		DrawCity();
+		buildings = BuildingWalls();
+
+		particles = CreateParticles(NUM_PARTICLES);
+
+		surfaces = particles;
+		surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
+
+		lights = CreateLights();
+	}
+	else {
+		DrawCityFromTexture();
+		surfaces.clear();
+		surfaces = particles;
+		surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
+	}
+
 	DrawWaterParticles();
+
+	timeToRender = true;
 
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
@@ -532,15 +520,90 @@ void InitDisplay() {
 	glutSwapBuffers();
 }
 
-void MainLoopStep()
+void displayNewWindow() {
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	// Set up the orthographic projection matrix
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluOrtho2D(0, 800, 0, 800);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	// Display the texture on a quad
+	if (currentFrameIndex < frames.size()) {
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, 0); // Assuming texture ID is 0
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 800, 800, 0, GL_RGBA, GL_UNSIGNED_BYTE, frames[currentFrameIndex]);
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f);
+		glTexCoord2f(1.0f, 0.0f); glVertex2f(screenWidth, 0.0f);
+		glTexCoord2f(1.0f, 1.0f); glVertex2f(screenWidth, screenHeight);
+		glTexCoord2f(0.0f, 1.0f); glVertex2f(0.0f, screenHeight);
+		glEnd();
+		glDisable(GL_TEXTURE_2D);
+	}
+
+	glutSwapBuffers();
+}
+
+// Timer function for displaying frames sequentially
+void displayNextFrame(int value) {
+	// Increment the current frame index
+	currentFrameIndex++;
+
+	if (currentFrameIndex < frames.size()) {
+		glutPostRedisplay();
+		glutTimerFunc(500, displayNextFrame, 0);
+	}
+	else {
+		currentFrameIndex = 0;
+		glutPostRedisplay();
+		glutTimerFunc(500, displayNextFrame, 0);
+	}
+}
+
+/* What controls the rendering timer. */
+void RenderingTimer(int value) {
+	/* If the IMGUI checkbox to render has been selected... */
+	if (timeToRender == true) {
+		// Update particle positions
+		for (Surface& p : particles) {
+			p.position.x -= 5; // Move particles by -500 along the x-axis
+		}
+
+		// Re-render the scene to reflect updated particle positions
+		InitDisplay();
+
+		unsigned char* textureBuffer = new unsigned char[screenWidth * screenHeight * 4]; // Assuming RGBA format
+		glReadPixels(0, 0, screenWidth, screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, textureBuffer);
+		frames.push_back(textureBuffer);
+
+		frameCount--;
+
+		/* If change is detected, call timer. */
+		glutTimerFunc(10000, RenderingTimer, 0);
+	}
+
+	if (frameCount <= 0) {
+		timeToRender = false;
+		cout << "Display time!" << endl;
+		glutDisplayFunc(displayNewWindow);
+		glutTimerFunc(500, displayNextFrame, 0);
+	}
+}
+
+/* What controls ImGui. */
+void StartGUI()
 {
 	ImGui_ImplOpenGL2_NewFrame();
 	ImGui_ImplGLUT_NewFrame();
 	ImGui::NewFrame();
 	ImGuiIO& io = ImGui::GetIO();
 
-	ImGui::Begin("Hello, world!");
-	ImGui::Text("This is some useful text.");
+	ImGui::Begin("CS434 Final Project");
+	ImGui::Text("Rendering...");
 	ImGui::End();
 
 	ImGui::Render();
@@ -566,7 +629,8 @@ int main(int argc, char** argv)
 
 	InitDisplay();
 
-	glutDisplayFunc(MainLoopStep);
+	glutDisplayFunc(StartGUI);
+	glutTimerFunc(1000, RenderingTimer, 0);
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
