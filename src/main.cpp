@@ -11,28 +11,29 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "ImGui/imgui.h"
-#include "ImGui/imgui_impl_glut.h"
-#include "ImGui/imgui_impl_opengl2.h"
+#include "ImGui/imgui_impl_glfw.h"
+#include "ImGui/imgui_impl_opengl3.h"
 
 #include "ProceduralCity.h"
 
 using namespace std;
 
 /* Reduce this number to speed up compilation time. */
-const int NUM_PARTICLES = 200;
+const int NUM_PARTICLES = 20;
 
-const int screenWidth = 800;
-const int screenHeight = 800;
+const int screenWidth = 1200;
+const int screenHeight = 1200;
 glm::vec4 background = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 
 /* Do not modify these as they are essential for ray tracing. */
-glm::vec3 eye = glm::vec3(40.0f, 25.0f, 25.0f);
-glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
+glm::vec3 eye = glm::vec3(60.0f, 30.0f, 30.0f);
+glm::vec3 lookAt = glm::vec3(15.0f, 10.0f, 8.0f);
 glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
 const GLfloat EPSILON = 1e-2;
 
 bool timeToRender = false;
+bool moveWater = false;
 int frameCount = 3;
 int currentFrameIndex = 0;
 
@@ -47,7 +48,7 @@ struct Light {
 	glm::vec3 spec;
 };
 
-GLuint cityTexture;
+GLuint cityTexture = -1;
 
 vector<Light> lights;
 vector<Surface> particles;
@@ -305,7 +306,7 @@ glm::vec4 TraceRay(const Ray& ray) {
 	GLfloat t = get<0>(tuple);
 	Surface particle = get<1>(tuple);
 
-	if ((t < 0.0f) || (particle.type == QUAD)) { // or quad
+	if ((t < 0.0f)) { // or quad
 		return background;
 	}
 
@@ -344,7 +345,10 @@ vector<glm::vec4> RayTraceOutput() {
 /* Draws the water particles over the city. */
 void DrawWaterParticles() {
 
-	colors = RayTraceOutput();
+	if (moveWater == true) {
+		colors.clear();
+		colors = RayTraceOutput();
+	}
 
 	GLuint texture;
 	glGenTextures(1, &texture);
@@ -352,8 +356,6 @@ void DrawWaterParticles() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, colors.data());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	colors.clear();
 
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texture);
@@ -397,84 +399,90 @@ void DrawWaterParticles() {
 	glDisable(GL_TEXTURE_2D);
 }
 
-/* Draws the city behind the water particles. */
-void DrawCity() {
+GLuint CaptureScreenToTexture() {
 
+	GLuint textureID;
+
+	// Generate a texture ID
+	glGenTextures(1, &textureID);
+
+	// Bind the texture
+	glBindTexture(GL_TEXTURE_2D, textureID);
+
+	// Allocate storage for the texture
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+	// Set texture parameters
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	// Create framebuffer object (FBO)
 	GLuint framebuffer;
 	glGenFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-	glGenTextures(1, &cityTexture);
-	glBindTexture(GL_TEXTURE_2D, cityTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cityTexture, 0);
+	// Attach the texture to the framebuffer
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	// Check framebuffer status
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (status != GL_FRAMEBUFFER_COMPLETE) {
+		fprintf(stderr, "Framebuffer is not complete\n");
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDeleteFramebuffers(1, &framebuffer);
+		glDeleteTextures(1, &textureID);
+		return 0;
+	}
 
+	// Set the viewport to match the texture size
 	glViewport(0, 0, screenWidth, screenHeight);
-	show();
 
+	// Generate ground plane and draw the buildings
+	GLfloat groundX = 15.0f;
+	GLfloat groundZ = 15.0f;
+
+	procedural(groundX, groundZ, dynamicBuildingNum);
+
+
+	// Unbind the framebuffer and texture
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glViewport(0, 0, screenWidth, screenHeight);
-
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0.0f, screenWidth, 0.0f, screenHeight, -1.0f, 1.0f);
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-
-	glBindTexture(GL_TEXTURE_2D, cityTexture);
-	glEnable(GL_TEXTURE_2D);
-
-	/* Drawing the city. */
-	glBegin(GL_QUADS);
-	glTexCoord2f(0.0f, 0.0f);
-	glVertex2f(0.0f, 0.0f);
-
-	glTexCoord2f(1.0f, 0.0f);
-	glVertex2f(screenWidth, 0.0f);
-
-	glTexCoord2f(1.0f, 1.0f);
-	glVertex2f(screenWidth, screenHeight);
-
-	glTexCoord2f(0.0f, 1.0f);
-	glVertex2f(0.0f, screenHeight);
-	glEnd();
-
-	glDisable(GL_TEXTURE_2D);
+	return textureID;
 }
 
 /* Drawing the preexisting city. */
 void DrawCityFromTexture() {
+	if (cityTexture == -1) {
+		cityTexture = CaptureScreenToTexture();
+	}
+
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// Set viewport to match screen size
+	glViewport(0, 0, screenWidth, screenHeight);
+
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0.0f, screenWidth, 0.0f, screenHeight, -1.0f, 1.0f);
-
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, cityTexture);
 
-	/* Drawing the city using the cityTexture. */
+	// Use normalized device coordinates (NDC) for vertex positions
 	glBegin(GL_QUADS);
 	glTexCoord2f(0.0f, 0.0f);
-	glVertex2f(0.0f, 0.0f);
+	glVertex2f(-1.0f, -1.0f);
 
 	glTexCoord2f(1.0f, 0.0f);
-	glVertex2f(screenWidth, 0.0f);
+	glVertex2f(1.0f, -1.0f);
 
 	glTexCoord2f(1.0f, 1.0f);
-	glVertex2f(screenWidth, screenHeight);
+	glVertex2f(1.0f, 1.0f);
 
 	glTexCoord2f(0.0f, 1.0f);
-	glVertex2f(0.0f, screenHeight);
+	glVertex2f(-1.0f, 1.0f);
 	glEnd();
 
 	glDisable(GL_TEXTURE_2D);
@@ -483,17 +491,13 @@ void DrawCityFromTexture() {
 /* Final display function for showing the city, water, and fog. */
 void InitDisplay() {
 
-	glViewport(0, 0, screenWidth, screenHeight);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
-	if (timeToRender == false) {
-		DrawCity();
+	if (buildings.empty() == true) {
 		buildings = BuildingWalls();
 
 		particles = CreateParticles(NUM_PARTICLES);
@@ -503,21 +507,12 @@ void InitDisplay() {
 
 		lights = CreateLights();
 	}
-	else {
-		DrawCityFromTexture();
-		surfaces.clear();
-		surfaces = particles;
-		surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
-	}
 
+	DrawCityFromTexture();
 	DrawWaterParticles();
-
-	timeToRender = true;
 
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
-
-	glutSwapBuffers();
 }
 
 void displayNewWindow() {
@@ -594,60 +589,109 @@ void RenderingTimer(int value) {
 	}
 }
 
-/* What controls ImGui. */
-void StartGUI()
-{
-	ImGui_ImplOpenGL2_NewFrame();
-	ImGui_ImplGLUT_NewFrame();
-	ImGui::NewFrame();
-	ImGuiIO& io = ImGui::GetIO();
-
-	ImGui::Begin("CS434 Final Project");
-	ImGui::Text("Rendering...");
-	ImGui::End();
-
-	ImGui::Render();
-
-	glViewport(0, 0, screenWidth, screenHeight);
-
-	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-
-	glutSwapBuffers();
-	glutPostRedisplay();
-}
-
-int main(int argc, char** argv)
-{
-	glutInit(&argc, argv);
-	glutInitWindowSize(screenWidth, screenHeight);
-	glutCreateWindow("CS434 Final Project");
-
-	if (glewInit() != GLEW_OK) {
-		cerr << "Failed to initialize GLEW." << endl;
-		exit(-1);
+int main(int argc, char* argv[]) {
+	if (!glfwInit()) {
+		std::cerr << "Failed to initialize GLFW." << std::endl;
+		return -1;
 	}
 
-	InitDisplay();
+	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "Procedural City", NULL, NULL);
+	if (!window) {
+		std::cerr << "Failed to create GLFW window." << std::endl;
+		glfwTerminate();
+		return -1;
+	}
 
-	glutDisplayFunc(StartGUI);
-	glutTimerFunc(1000, RenderingTimer, 0);
+	double lastTime = glfwGetTime();
+	glfwMakeContextCurrent(window);
 
+	if (glewInit() != GLEW_OK) {
+		std::cerr << "Failed to initialize GLEW." << std::endl;
+		return -1;
+	}
+
+	// Setup ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	ImGui::StyleColorsDark(); // Set style
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 330");
+	glfwSetKeyCallback(window, key_callback);
 
-	ImGui::StyleColorsDark();
+	SetupCamera();
+	//SetupLighting();
+	glClearColor(1, 1, 1, 1.0f);
 
-	ImGui_ImplGLUT_Init();
-	ImGui_ImplOpenGL2_Init();
-	ImGui_ImplGLUT_InstallFuncs();
+	// Main loop
+	while (!glfwWindowShouldClose(window)) {
+		glfwPollEvents();
 
-	glutMainLoop();
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
 
-	ImGui_ImplOpenGL2_Shutdown();
-	ImGui_ImplGLUT_Shutdown();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
+
+		if (timeToRender == true) {
+			InitDisplay();
+			moveWater = true;
+		}
+		else {
+			Load(buildingTexture, "textures/Building.bmp");
+
+			// Generate ground plane and draw the buildings
+			GLfloat groundX = 15.0f;
+			GLfloat groundY = 1.0f;
+			GLfloat groundZ = 15.0f;
+
+			glPushMatrix();
+			glTranslatef(0.0f, -0.5f * groundY, 0.0f);
+			glScalef(groundX, groundY, groundZ);
+			draw(false);
+			glPopMatrix();
+
+			// Toggle between random and grid positions
+			if (useGridPos) {
+				gridPos(dynamicBuildingNum, dynamicHeightNum);
+			}
+			else {
+				randPos(dynamicBuildingNum, dynamicHeightNum);
+			}
+
+			randPos(dynamicBuildingNum, dynamicHeightNum);
+			procedural(groundX, groundZ, dynamicBuildingNum);
+		}
+
+		ImGui::SetNextWindowSize(ImVec2(550, 150));
+		ImGui::Begin("Scene Controls");
+		ImGui::Text("Adjust city parameters.");
+		ImGui::SliderInt("Number of Buildings", &dynamicBuildingNum, 1, 150);
+		ImGui::SliderInt("Building Height", &dynamicHeightNum, 0, 8);
+		ImGui::Checkbox("Use Grid Street", &useGridPos);
+
+		ImGui::Checkbox("Place water?", &timeToRender);
+
+		if (useGridPos) {
+			ImGui::SliderFloat("Street Width", &dynamicStreetWidth, 0, 2.5);
+		}
+		ImGui::End();
+
+		// Rendering
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		glfwSwapBuffers(window);
+	}
+
+	// Cleanup
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
+
+	glfwDestroyWindow(window);
+	glfwTerminate();
 
 	return 0;
 }
