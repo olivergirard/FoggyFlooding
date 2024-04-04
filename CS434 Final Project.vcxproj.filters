@@ -45,6 +45,9 @@
     <ClCompile Include="include\ImGui\imgui_impl_opengl3.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\4D_Perlin_Integrated\CS434_Lab2\include\FastNoise.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ImGui\imgui.h">

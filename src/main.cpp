@@ -16,10 +16,13 @@
 
 #include "ProceduralCity.h"
 
+// Noise library
+#include "FastNoise.h"
+
 using namespace std;
 
 /* Reduce this number to speed up compilation time. */
-const int NUM_PARTICLES = 20;
+const int NUM_PARTICLES = 10;
 
 const int screenWidth = 1200;
 const int screenHeight = 1200;
@@ -36,6 +39,9 @@ bool timeToRender = false;
 bool moveWater = false;
 int frameCount = 3;
 int currentFrameIndex = 0;
+
+// Perlin noise generator
+FastNoise perlinNoise;
 
 struct Ray {
 	glm::vec3 origin;
@@ -57,6 +63,51 @@ vector<Surface> buildings;
 vector<Surface> surfaces;
 
 vector<unsigned char*> frames;
+
+int perlinSeed = 12345;
+float perlinFrequency = 0.01;
+
+vector<glm::vec4> generatePerlinTexture() {
+	// generate perlin noise
+	perlinNoise.SetNoiseType(FastNoise::NoiseType::Perlin);
+	perlinNoise.SetFrequency(perlinFrequency);
+
+	std::vector<glm::vec4> _PerlinRawValues;
+
+	perlinNoise.SetSeed(perlinSeed);
+
+	for (int x = 0; x < screenWidth; x++) {
+		for (int y = 0; y < screenHeight; y++) {
+			float noiseVal = perlinNoise.GetNoise(x, y);
+
+			float normalizedNoiseVal = ((noiseVal + 1.0f) * 0.5f);
+			if (normalizedNoiseVal > 1.0) {
+				normalizedNoiseVal = 1.0;
+			}
+			else if (normalizedNoiseVal < 0.0) {
+				normalizedNoiseVal = 0.0;
+			}
+			// std::cout << normalizedNoiseVal << std::endl;
+
+			glm::vec4 temp = glm::vec4(normalizedNoiseVal, normalizedNoiseVal, normalizedNoiseVal, normalizedNoiseVal);
+
+			_PerlinRawValues.push_back(temp);
+		}
+	}
+
+	return _PerlinRawValues;
+
+	/*
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 800, 800, 0, GL_RGBA, GL_FLOAT, _PerlinRawValues.data());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	return texture;
+	*/
+}
 
 /* Generates the initial position for the particles that comprise the water. */
 glm::vec3 GeneratePosition() {
@@ -342,6 +393,11 @@ vector<glm::vec4> RayTraceOutput() {
 	return colors;
 }
 
+glm::vec4 mix(glm::vec4 originalColor, glm::vec4 fogColor, glm::vec4 fogFactor) {
+	glm::vec4 mixed = originalColor * (glm::vec4(1.0, 1.0, 1.0, 1.0) - fogFactor) + fogColor * fogFactor;
+	return mixed;
+}
+
 /* Draws the water particles over the city. */
 void DrawWaterParticles() {
 
@@ -350,10 +406,71 @@ void DrawWaterParticles() {
 		colors = RayTraceOutput();
 	}
 
+	vector<glm::vec4> perlinTexture = generatePerlinTexture();
+
+	// Interpolating between scene and perlin texture
+	vector<glm::vec4> finalFog;
+
+	/*
+	float fogDensity_factor = 0.97;
+	glm::vec4 fogColor = glm::vec4(0.7, 0.7, 0.7, 0.7);
+	float fogFactor = 0.7;
+	glm::vec4 fogFactorVec = glm::vec4(fogFactor, fogFactor, fogFactor, fogFactor);
+	for (int i = 0; i < colors.size(); i++) {
+		float fogDensity = perlinTexture[i].x * fogDensity_factor;
+
+		glm::vec4 finalColor = mix(colors[i], fogColor, fogFactorVec);
+
+		finalFog.push_back(finalColor);
+	}
+	*/
+
+	for (int i = 0; i < colors.size(); i++) {
+		if (colors[i].w <= 0) {
+			colors[i].x = 0;
+			colors[i].y = 0;
+			colors[i].z = 0;
+		}
+
+		// std::cout << colors[i].x << "," << colors[i].y << "," << colors[i].z << "," << colors[i].w << std::endl;
+		glm::vec4 finalColor = colors[i] + perlinTexture[i];
+
+		if (finalColor.x > 1.0) {
+			finalColor.x = 1.0;
+		}
+		else if (finalColor.x < 0.0) {
+			finalColor.x = 0.0;
+		}
+
+		if (finalColor.y > 1.0) {
+			finalColor.y = 1.0;
+		}
+		else if (finalColor.y < 0.0) {
+			finalColor.y = 0.0;
+		}
+
+		if (finalColor.z > 1.0) {
+			finalColor.z = 1.0;
+		}
+		else if (finalColor.z < 0.0) {
+			finalColor.z = 0.0;
+		}
+
+		if (finalColor.a > 1.0) {
+			finalColor.a = 1.0;
+		}
+		else if (finalColor.a < 0.0) {
+			finalColor.a = 0.0;
+		}
+
+		finalFog.push_back(finalColor);
+
+	}
+
 	GLuint texture;
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, colors.data());
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_FLOAT, finalFog.data());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -561,12 +678,17 @@ void displayNextFrame(int value) {
 
 /* What controls the rendering timer. */
 void RenderingTimer(int value) {
+
+
 	/* If the IMGUI checkbox to render has been selected... */
 	if (timeToRender == true) {
 		// Update particle positions
 		for (Surface& p : particles) {
 			p.position.x -= 5; // Move particles by -500 along the x-axis
 		}
+		srand(time(NULL));
+		perlinSeed = rand();
+
 
 		// Re-render the scene to reflect updated particle positions
 		InitDisplay();
