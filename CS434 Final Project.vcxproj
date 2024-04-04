@@ -136,7 +136,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\4D_Perlin_Integrated\CS434_Lab2\include\FastNoise.cpp" />
+    <ClCompile Include="include\FastNoise.cpp" />
     <ClCompile Include="include\ImGui\imgui.cpp" />
     <ClCompile Include="include\ImGui\imgui_demo.cpp" />
     <ClCompile Include="include\ImGui\imgui_draw.cpp" />
@@ -149,6 +149,7 @@
     <ClCompile Include="src\ProceduralCity.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\FastNoise.h" />
     <ClInclude Include="include\ImGui\imconfig.h" />
     <ClInclude Include="include\ImGui\imgui.h" />
     <ClInclude Include="include\ImGui\imgui_impl_glfw.h" />

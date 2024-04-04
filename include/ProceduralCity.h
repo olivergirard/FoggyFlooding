@@ -31,6 +31,8 @@ struct Surface {
     glm::vec3 spec = glm::vec3(1.0f, 1.0f, 01.0f);
     GLfloat shininess = 10.0f;
     typeOfSurface type;
+    bool falling = false;
+    bool waveFlop = false;
 };
 
 vector<Surface> BuildingWalls();

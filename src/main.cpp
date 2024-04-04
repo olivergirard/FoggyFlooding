@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <tuple>
 #include <random>
+#include <chrono>
+#include <thread>
 
 #include <GL/glew.h>
 #include <GL/freeglut.h>
@@ -15,17 +17,15 @@
 #include "ImGui/imgui_impl_opengl3.h"
 
 #include "ProceduralCity.h"
-
-// Noise library
 #include "FastNoise.h"
 
 using namespace std;
 
 /* Reduce this number to speed up compilation time. */
-const int NUM_PARTICLES = 10;
+int NUM_PARTICLES = 10;
 
-const int screenWidth = 1200;
-const int screenHeight = 1200;
+const int screenWidth = 1000;
+const int screenHeight = 1000;
 glm::vec4 background = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 
 /* Do not modify these as they are essential for ray tracing. */
@@ -37,8 +37,17 @@ const GLfloat EPSILON = 1e-2;
 
 bool timeToRender = false;
 bool moveWater = false;
-int frameCount = 3;
+bool showAnimation = false;
+
+int frameCount = 1;
 int currentFrameIndex = 0;
+
+double lastFrameTime;
+double currentTime;
+double deltaTime;
+
+float frameRate = 0.25;
+std::chrono::duration<float> frameWait(frameRate);
 
 // Perlin noise generator
 FastNoise perlinNoise;
@@ -62,7 +71,7 @@ vector<glm::vec4> colors;
 vector<Surface> buildings;
 vector<Surface> surfaces;
 
-vector<unsigned char*> frames;
+vector<GLuint> frames;
 
 int perlinSeed = 12345;
 float perlinFrequency = 0.01;
@@ -143,7 +152,8 @@ vector<Surface> CreateParticles(GLuint numParticles) {
 
 		p.position = GeneratePosition();
 
-		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
+		//p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
+		p.diff = glm::vec3(0.0f, 0.671f, 1.0f);
 		p.type = SPHERE;
 		p.radius = 1.0f;
 		particles.push_back(p);
@@ -357,7 +367,7 @@ glm::vec4 TraceRay(const Ray& ray) {
 	GLfloat t = get<0>(tuple);
 	Surface particle = get<1>(tuple);
 
-	if ((t < 0.0f)) { // or quad
+	if ((t < 0.0f) || (particle.type == QUAD)) {
 		return background;
 	}
 
@@ -488,7 +498,6 @@ void DrawWaterParticles() {
 	glScalef(-1.0f, 1.0f, 1.0f);
 	glTranslatef(0.0f, 0.0f, 0.0f);
 	glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-	glScalef(1.333, 1.333, 1.333);
 
 	glDisable(GL_LIGHTING);
 	glDisable(GL_LIGHT0);
@@ -614,16 +623,17 @@ void InitDisplay() {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
-	if (buildings.empty() == true) {
-		buildings = BuildingWalls();
+	buildings = BuildingWalls();
 
+	if (particles.empty() == true) {
 		particles = CreateParticles(NUM_PARTICLES);
-
-		surfaces = particles;
-		surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
-
-		lights = CreateLights();
 	}
+
+	surfaces = particles;
+	surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
+
+	lights = CreateLights();
+	
 
 	DrawCityFromTexture();
 	DrawWaterParticles();
@@ -632,83 +642,103 @@ void InitDisplay() {
 	glDisable(GL_DEPTH_TEST);
 }
 
-void displayNewWindow() {
-	glClear(GL_COLOR_BUFFER_BIT);
+void FluidMovement() {
 
-	// Set up the orthographic projection matrix
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluOrtho2D(0, 800, 0, 800);
+	for (Surface& p : particles) {
 
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+		if (p.waveFlop == false) {
+			if (p.falling == false) {
+				if (p.position.x > -10) {
+					p.position.x -= 5;
+				}
+				else {
+					p.position.y += 5;
+				}
 
-	// Display the texture on a quad
-	if (currentFrameIndex < frames.size()) {
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, 0); // Assuming texture ID is 0
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 800, 800, 0, GL_RGBA, GL_UNSIGNED_BYTE, frames[currentFrameIndex]);
-		glBegin(GL_QUADS);
-		glTexCoord2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f);
-		glTexCoord2f(1.0f, 0.0f); glVertex2f(screenWidth, 0.0f);
-		glTexCoord2f(1.0f, 1.0f); glVertex2f(screenWidth, screenHeight);
-		glTexCoord2f(0.0f, 1.0f); glVertex2f(0.0f, screenHeight);
-		glEnd();
-		glDisable(GL_TEXTURE_2D);
+				if (p.position.y > 15) {
+					p.falling = true;
+				}
+			}
+
+			if (p.falling == true) {
+				p.position.y -= 5;
+
+				if (p.position.y <= 0) {
+					p.falling = false;
+					p.waveFlop = true;
+				}
+			}
+		}
 	}
 
-	glutSwapBuffers();
-}
-
-// Timer function for displaying frames sequentially
-void displayNextFrame(int value) {
-	// Increment the current frame index
-	currentFrameIndex++;
-
-	if (currentFrameIndex < frames.size()) {
-		glutPostRedisplay();
-		glutTimerFunc(500, displayNextFrame, 0);
-	}
-	else {
-		currentFrameIndex = 0;
-		glutPostRedisplay();
-		glutTimerFunc(500, displayNextFrame, 0);
-	}
+	vector<Surface> newParticles = CreateParticles(NUM_PARTICLES);
+	particles.insert(particles.end(), newParticles.begin(), newParticles.end());
 }
 
 /* What controls the rendering timer. */
-void RenderingTimer(int value) {
+void RenderingTimer(GLFWwindow* window, int width, int height) {
+	if (timeToRender) {
+		
+		FluidMovement();
 
-
-	/* If the IMGUI checkbox to render has been selected... */
-	if (timeToRender == true) {
-		// Update particle positions
-		for (Surface& p : particles) {
-			p.position.x -= 5; // Move particles by -500 along the x-axis
-		}
 		srand(time(NULL));
 		perlinSeed = rand();
 
-
-		// Re-render the scene to reflect updated particle positions
 		InitDisplay();
 
-		unsigned char* textureBuffer = new unsigned char[screenWidth * screenHeight * 4]; // Assuming RGBA format
-		glReadPixels(0, 0, screenWidth, screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, textureBuffer);
-		frames.push_back(textureBuffer);
+		// Generate texture if not already generated
+		GLuint texture;
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
+
+		// Bind framebuffer and texture
+		glBindFramebuffer(GL_FRAMEBUFFER, 0); // Assuming you want to render to the default framebuffer
+		glBindTexture(GL_TEXTURE_2D, texture);
+
+		// Copy framebuffer contents into texture
+		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
+
+		frames.push_back(texture);
 
 		frameCount--;
 
 		/* If change is detected, call timer. */
-		glutTimerFunc(10000, RenderingTimer, 0);
+		if (frameCount > 0) {
+			glfwSetTime(0.0); // Reset timer
+			glfwSetWindowSizeCallback(window, RenderingTimer);
+		}
+		else {
+			timeToRender = false;
+			showAnimation = true;
+		}
 	}
+}
 
-	if (frameCount <= 0) {
-		timeToRender = false;
-		cout << "Display time!" << endl;
-		glutDisplayFunc(displayNewWindow);
-		glutTimerFunc(500, displayNextFrame, 0);
-	}
+void Animate() {
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluOrtho2D(0, screenWidth, 0, screenHeight);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, frames[currentFrameIndex]);
+
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex2f(screenWidth, 0.0f);
+	glTexCoord2f(1.0f, 1.0f); glVertex2f(screenWidth, screenHeight);
+	glTexCoord2f(0.0f, 1.0f); glVertex2f(0.0f, screenHeight);
+	glEnd();
+
+	glDisable(GL_TEXTURE_2D);
 }
 
 int main(int argc, char* argv[]) {
@@ -756,9 +786,27 @@ int main(int argc, char* argv[]) {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 
-		if (timeToRender == true) {
+		if (showAnimation == true) {
+
+			currentTime = glfwGetTime();
+			deltaTime += (currentTime - lastTime) * frameRate;
+			lastTime = currentTime;
+
+			Animate();
+			if (deltaTime >= frameRate) {
+				
+				std::this_thread::sleep_for(frameWait);
+				currentFrameIndex++;
+			}
+
+			if (currentFrameIndex >= frames.size()) {
+				currentFrameIndex = 0;
+			}
+		}
+		else if (timeToRender == true) {
 			InitDisplay();
 			moveWater = true;
+			RenderingTimer(window, screenWidth, screenHeight);
 		}
 		else {
 			Load(buildingTexture, "textures/Building.bmp");
@@ -775,35 +823,42 @@ int main(int argc, char* argv[]) {
 			glPopMatrix();
 
 			// Toggle between random and grid positions
-			if (useGridPos) {
+			/*if (useGridPos) {
 				gridPos(dynamicBuildingNum, dynamicHeightNum);
 			}
-			else {
+			else {*/
 				randPos(dynamicBuildingNum, dynamicHeightNum);
-			}
+			//}
 
 			randPos(dynamicBuildingNum, dynamicHeightNum);
 			procedural(groundX, groundZ, dynamicBuildingNum);
 		}
 
-		ImGui::SetNextWindowSize(ImVec2(550, 150));
-		ImGui::Begin("Scene Controls");
-		ImGui::Text("Adjust city parameters.");
-		ImGui::SliderInt("Number of Buildings", &dynamicBuildingNum, 1, 150);
-		ImGui::SliderInt("Building Height", &dynamicHeightNum, 0, 8);
-		ImGui::Checkbox("Use Grid Street", &useGridPos);
 
-		ImGui::Checkbox("Place water?", &timeToRender);
+		if (showAnimation == false) {
+			ImGui::SetNextWindowSize(ImVec2(600, 200));
+			ImGui::Begin("Scene Controls");
+			ImGui::Text("Adjust city parameters.");
+			ImGui::SliderInt("Number of Buildings", &dynamicBuildingNum, 1, 150);
+			ImGui::SliderInt("Building Height", &dynamicHeightNum, 0, 8);
+			//ImGui::Checkbox("Use Grid Street", &useGridPos);
 
-		if (useGridPos) {
-			ImGui::SliderFloat("Street Width", &dynamicStreetWidth, 0, 2.5);
+			ImGui::SliderFloat("Fog intensity", &perlinFrequency, 0.01, 0.05);
+
+			ImGui::SliderInt("Number of water particles", &NUM_PARTICLES, 0, 300);
+			ImGui::SliderInt("Number of frames", &frameCount, 1, 30);
+			ImGui::Checkbox("Render fog and water?", &timeToRender);
+
+			if (useGridPos) {
+				ImGui::SliderFloat("Street Width", &dynamicStreetWidth, 0, 2.5);
+			}
+			ImGui::End();
+
+			// Rendering
+			ImGui::Render();
+			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		}
-		ImGui::End();
-
-		// Rendering
-		ImGui::Render();
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
+		
 		glfwSwapBuffers(window);
 	}
 
