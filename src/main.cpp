@@ -19,6 +19,10 @@
 #include "ProceduralCity.h"
 #include "FastNoise.h"
 
+// Library for OpenMP
+#include <omp.h>
+
+#define OMP_NUM_THREADS 6
 using namespace std;
 
 /* Reduce this number to speed up compilation time. */
@@ -388,15 +392,16 @@ vector<glm::vec4> RayTraceOutput() {
 
 	vector<glm::vec4> colors;
 
-	for (GLuint i = 0; i < screenWidth; i++)
+	#pragma omp parallel collapse(2) schedule(dynamic)
+	for (int i = 0; i < screenWidth; i++)
 	{
-		for (GLuint j = 0; j < screenHeight; j++)
+		for (int j = 0; j < screenHeight; j++)
 		{
 			Ray ray = CalculateRay(i, j);
 			glm::vec4 color = TraceRay(ray);
 			color = glm::clamp(color, 0.0f, 1.0f);
-
 			colors.push_back(color);
+
 		}
 	}
 
@@ -413,6 +418,7 @@ void DrawWaterParticles() {
 
 	if (moveWater == true) {
 		colors.clear();
+
 		colors = RayTraceOutput();
 	}
 
@@ -633,7 +639,7 @@ void InitDisplay() {
 	surfaces.insert(surfaces.end(), buildings.begin(), buildings.end());
 
 	lights = CreateLights();
-	
+
 
 	DrawCityFromTexture();
 	DrawWaterParticles();
@@ -678,7 +684,7 @@ void FluidMovement() {
 /* What controls the rendering timer. */
 void RenderingTimer(GLFWwindow* window, int width, int height) {
 	if (timeToRender) {
-		
+
 		FluidMovement();
 
 		srand(time(NULL));
@@ -742,6 +748,9 @@ void Animate() {
 }
 
 int main(int argc, char* argv[]) {
+	// Set the number of threads omp is allowed to take up
+	omp_set_num_threads(OMP_NUM_THREADS);
+
 	if (!glfwInit()) {
 		std::cerr << "Failed to initialize GLFW." << std::endl;
 		return -1;
@@ -794,7 +803,7 @@ int main(int argc, char* argv[]) {
 
 			Animate();
 			if (deltaTime >= frameRate) {
-				
+
 				std::this_thread::sleep_for(frameWait);
 				currentFrameIndex++;
 			}
@@ -827,7 +836,7 @@ int main(int argc, char* argv[]) {
 				gridPos(dynamicBuildingNum, dynamicHeightNum);
 			}
 			else {*/
-				randPos(dynamicBuildingNum, dynamicHeightNum);
+			randPos(dynamicBuildingNum, dynamicHeightNum);
 			//}
 
 			randPos(dynamicBuildingNum, dynamicHeightNum);
@@ -858,7 +867,7 @@ int main(int argc, char* argv[]) {
 			ImGui::Render();
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		}
-		
+
 		glfwSwapBuffers(window);
 	}
 
