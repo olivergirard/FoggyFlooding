@@ -19,6 +19,7 @@ struct Surface {
     /* Particle attributes. */
     glm::vec3 position;
     GLfloat radius = 50.0f;
+    glm::vec3 velocity;
 
     /* Quad attributes. */
     glm::vec3 pos1;
@@ -31,8 +32,6 @@ struct Surface {
     glm::vec3 spec = glm::vec3(1.0f, 1.0f, 01.0f);
     GLfloat shininess = 10.0f;
     typeOfSurface type;
-    bool falling = false;
-    bool waveFlop = false;
 };
 
 vector<Surface> BuildingWalls();

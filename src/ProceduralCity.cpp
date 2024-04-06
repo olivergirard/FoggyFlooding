@@ -118,7 +118,6 @@ void properties() {
 	glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, sh);
 }
 
-
 GLfloat vBuilding[8][3] = {
 	{-1.0, 0.0, -1.0},
 	{-1.0, 0.0, 1.0},
@@ -182,7 +181,7 @@ void draw(bool t = false) {
 
 		glNormal3fv(glm::value_ptr(normal));
 
-		for (GLint j = 0; j < 4; ++j) { // Change loop condition to iterate over 4 vertices of a quad
+		for (GLint j = 0; j < 4; ++j) { 
 			float texCoords[2];
 			switch (j) {
 			case 0: texCoords[0] = 0.0f; texCoords[1] = 0.0f; break;
@@ -229,7 +228,7 @@ void randPos(int dNum, int heightSetIndex) {
 	savedBuildingPos.clear();
 	savedHeights.clear();
 
-	auto& selectedHeightSet = heightSets[heightSetIndex]; // Select the desired height set
+	auto& selectedHeightSet = heightSets[heightSetIndex];
 
 	for (int i = 0; i < dNum; i++) {
 		double posX = Random::random(0, 19);
@@ -276,8 +275,27 @@ void gridPos(int dNum, int heightSetIndex) {
 }
 
 void procedural(GLfloat groundX, GLfloat groundZ, int dNum) {
+
 	GLfloat offsetX = groundX / 2.0f;
 	GLfloat offsetZ = groundZ / 2.0f;
+
+	glBegin(GL_QUADS);
+
+	glColor3f(1.0f, 0.929f, 0.714f);
+
+	glVertex3f(40.0f, -0.1f, 30.0f);
+	glVertex3f(40.0f, -0.1f, -40.0f);
+	glVertex3f(-20.0f, -0.1f, -50.0f);
+	glVertex3f(-20.0f, -0.1f, 30.0f);
+
+	glColor3f(1.0f, 1.0f, 1.0f);
+
+	glVertex3f(15.0f, 0.0f, 15.0f);
+	glVertex3f(15.0f, 0.0f, -15.0f);
+	glVertex3f(-15.0f, 0.0f, -15.0f);
+	glVertex3f(-15.0f, 0.0f, 15.0f);
+
+	glEnd();
 
 	walls.clear();
 
@@ -326,7 +344,6 @@ void procedural(GLfloat groundX, GLfloat groundZ, int dNum) {
 		}
 	}
 }
-
 
 void Load(unsigned int& textureID, const char* filename) {
 	BitmapReader bmpReader(filename);

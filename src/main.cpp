@@ -19,10 +19,9 @@
 #include "ProceduralCity.h"
 #include "FastNoise.h"
 
-// Library for OpenMP
 #include <omp.h>
 
-#define OMP_NUM_THREADS 6
+#define OMP_NUM_THREADS 8
 using namespace std;
 
 /* Reduce this number to speed up compilation time. */
@@ -42,6 +41,7 @@ const GLfloat EPSILON = 1e-2;
 bool timeToRender = false;
 bool moveWater = false;
 bool showAnimation = false;
+bool heightAdjusted = false;
 
 int frameCount = 1;
 int currentFrameIndex = 0;
@@ -53,7 +53,6 @@ double deltaTime;
 float frameRate = 0.25;
 std::chrono::duration<float> frameWait(frameRate);
 
-// Perlin noise generator
 FastNoise perlinNoise;
 
 struct Ray {
@@ -140,7 +139,7 @@ glm::vec3 GeneratePosition() {
 	GLfloat x = disX(gen);
 	GLfloat z = disZ(gen);
 
-	return glm::vec3(x, 0, z);
+	return glm::vec3(x, 0.0f, z);
 }
 
 /* Creates any particles necessary for the scene. */
@@ -156,10 +155,10 @@ vector<Surface> CreateParticles(GLuint numParticles) {
 
 		p.position = GeneratePosition();
 
-		//p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 1.0f);
-		p.diff = glm::vec3(0.0f, 0.671f, 1.0f);
+		p.diff = glm::vec3(0.0f, (double)rand() / RAND_MAX, 0.5f);
+		p.velocity = glm::vec3(-5.0f, 0.0f, 0.0f);
 		p.type = SPHERE;
-		p.radius = 1.0f;
+		p.radius = 0.75f;
 		particles.push_back(p);
 	}
 
@@ -171,7 +170,7 @@ vector<Light> CreateLights() {
 
 	Light l;
 
-	l.position = glm::vec3(-5.0f, 10.0f, 10.0f);
+	l.position = glm::vec3(15.0f, 10.0f, 8.0f);
 	l.diff = glm::vec3(1, 1, 1);
 	l.spec = glm::vec3(0, 0, 0);
 
@@ -379,7 +378,7 @@ glm::vec4 TraceRay(const Ray& ray) {
 	glm::vec3 color = glm::vec3(0.0f, 0.0f, 0.0f);
 
 	for (Light& light : contributedLights) {
-		color += Phong(ray, light, t, particle);
+		color = Phong(ray, light, t, particle);
 	}
 
 	return glm::vec4(color, 1.0f);
@@ -388,20 +387,16 @@ glm::vec4 TraceRay(const Ray& ray) {
 /* Create a vector of colors used for generating the final scene. */
 vector<glm::vec4> RayTraceOutput() {
 
-	glm::vec4 color;
+	vector<glm::vec4> colors(screenWidth * screenHeight);
 
-	vector<glm::vec4> colors;
+#pragma omp parallel for schedule(static)
+	for (int i = 0; i < screenWidth; i++) {
+		for (int j = 0; j < screenHeight; j++) {
 
-	#pragma omp parallel collapse(2) schedule(dynamic)
-	for (int i = 0; i < screenWidth; i++)
-	{
-		for (int j = 0; j < screenHeight; j++)
-		{
 			Ray ray = CalculateRay(i, j);
 			glm::vec4 color = TraceRay(ray);
 			color = glm::clamp(color, 0.0f, 1.0f);
-			colors.push_back(color);
-
+			colors[i * screenHeight + j] = color;
 		}
 	}
 
@@ -534,49 +529,24 @@ void DrawWaterParticles() {
 GLuint CaptureScreenToTexture() {
 
 	GLuint textureID;
-
-	// Generate a texture ID
 	glGenTextures(1, &textureID);
-
-	// Bind the texture
 	glBindTexture(GL_TEXTURE_2D, textureID);
-
-	// Allocate storage for the texture
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenWidth, screenHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
-	// Set texture parameters
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	// Create framebuffer object (FBO)
 	GLuint framebuffer;
 	glGenFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-
-	// Attach the texture to the framebuffer
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
 
-	// Check framebuffer status
-	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	if (status != GL_FRAMEBUFFER_COMPLETE) {
-		fprintf(stderr, "Framebuffer is not complete\n");
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glDeleteFramebuffers(1, &framebuffer);
-		glDeleteTextures(1, &textureID);
-		return 0;
-	}
-
-	// Set the viewport to match the texture size
 	glViewport(0, 0, screenWidth, screenHeight);
 
-	// Generate ground plane and draw the buildings
 	GLfloat groundX = 15.0f;
 	GLfloat groundZ = 15.0f;
 
 	procedural(groundX, groundZ, dynamicBuildingNum);
 
-
-	// Unbind the framebuffer and texture
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -585,13 +555,13 @@ GLuint CaptureScreenToTexture() {
 
 /* Drawing the preexisting city. */
 void DrawCityFromTexture() {
+
 	if (cityTexture == -1) {
 		cityTexture = CaptureScreenToTexture();
 	}
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// Set viewport to match screen size
 	glViewport(0, 0, screenWidth, screenHeight);
 
 	glMatrixMode(GL_PROJECTION);
@@ -602,7 +572,6 @@ void DrawCityFromTexture() {
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, cityTexture);
 
-	// Use normalized device coordinates (NDC) for vertex positions
 	glBegin(GL_QUADS);
 	glTexCoord2f(0.0f, 0.0f);
 	glVertex2f(-1.0f, -1.0f);
@@ -651,35 +620,44 @@ void InitDisplay() {
 void FluidMovement() {
 
 	for (Surface& p : particles) {
+		p.position.x += p.velocity.x;
+		p.position.y += p.velocity.y;
 
-		if (p.waveFlop == false) {
-			if (p.falling == false) {
-				if (p.position.x > -10) {
-					p.position.x -= 5;
-				}
-				else {
-					p.position.y += 5;
-				}
+		/* When the particle hits the wall. */
+		if (p.position.x <= -25) {
 
-				if (p.position.y > 15) {
-					p.falling = true;
-				}
+			if (p.position.y <= 0) {
+				p.velocity.y = NUM_PARTICLES;
+				p.velocity.x = 5.0f;
 			}
+		}
 
-			if (p.falling == true) {
-				p.position.y -= 5;
+		/* Making the particle fall. */
+		if (p.position.y > 0) {
+			p.velocity.y -= 2.0f;
 
-				if (p.position.y <= 0) {
-					p.falling = false;
-					p.waveFlop = true;
-				}
+			if (p.position.x <= -25) {
+				p.velocity.x = 0.0f;
 			}
+		}
+
+		/* Ensuring every particle stays above the ground. */
+		if (p.position.y <= 0) {
+			p.velocity.y = 0;
+			p.position.y = 0;
+		}
+
+		/* Bringing in new particles from a higher vertical level. */
+		if (p.position.x > 30) {
+			p.position.y += 1.0f;
+			p.velocity.x = -5.0f;
 		}
 	}
 
 	vector<Surface> newParticles = CreateParticles(NUM_PARTICLES);
 	particles.insert(particles.end(), newParticles.begin(), newParticles.end());
 }
+
 
 /* What controls the rendering timer. */
 void RenderingTimer(GLFWwindow* window, int width, int height) {
@@ -692,20 +670,17 @@ void RenderingTimer(GLFWwindow* window, int width, int height) {
 
 		InitDisplay();
 
-		// Generate texture if not already generated
 		GLuint texture;
 		glGenTextures(1, &texture);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
+		glBindTexture(GL_TEXTURE_2D, 0);
 
-		// Bind framebuffer and texture
-		glBindFramebuffer(GL_FRAMEBUFFER, 0); // Assuming you want to render to the default framebuffer
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindTexture(GL_TEXTURE_2D, texture);
 
-		// Copy framebuffer contents into texture
 		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
 
 		frames.push_back(texture);
@@ -714,7 +689,7 @@ void RenderingTimer(GLFWwindow* window, int width, int height) {
 
 		/* If change is detected, call timer. */
 		if (frameCount > 0) {
-			glfwSetTime(0.0); // Reset timer
+			glfwSetTime(0.0);
 			glfwSetWindowSizeCallback(window, RenderingTimer);
 		}
 		else {
@@ -756,7 +731,9 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
-	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "Procedural City", NULL, NULL);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
+	GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "CS434 Final Project", NULL, NULL);
 	if (!window) {
 		std::cerr << "Failed to create GLFW window." << std::endl;
 		glfwTerminate();
@@ -781,10 +758,8 @@ int main(int argc, char* argv[]) {
 	glfwSetKeyCallback(window, key_callback);
 
 	SetupCamera();
-	//SetupLighting();
-	glClearColor(1, 1, 1, 1.0f);
+	glClearColor(0.51, 0.753, 1.0f, 1.0f);
 
-	// Main loop
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
@@ -820,24 +795,9 @@ int main(int argc, char* argv[]) {
 		else {
 			Load(buildingTexture, "textures/Building.bmp");
 
-			// Generate ground plane and draw the buildings
 			GLfloat groundX = 15.0f;
 			GLfloat groundY = 1.0f;
 			GLfloat groundZ = 15.0f;
-
-			glPushMatrix();
-			glTranslatef(0.0f, -0.5f * groundY, 0.0f);
-			glScalef(groundX, groundY, groundZ);
-			draw(false);
-			glPopMatrix();
-
-			// Toggle between random and grid positions
-			/*if (useGridPos) {
-				gridPos(dynamicBuildingNum, dynamicHeightNum);
-			}
-			else {*/
-			randPos(dynamicBuildingNum, dynamicHeightNum);
-			//}
 
 			randPos(dynamicBuildingNum, dynamicHeightNum);
 			procedural(groundX, groundZ, dynamicBuildingNum);
@@ -854,8 +814,8 @@ int main(int argc, char* argv[]) {
 
 			ImGui::SliderFloat("Fog intensity", &perlinFrequency, 0.01, 0.05);
 
-			ImGui::SliderInt("Number of water particles", &NUM_PARTICLES, 0, 300);
-			ImGui::SliderInt("Number of frames", &frameCount, 1, 30);
+			ImGui::SliderInt("Number of water particles", &NUM_PARTICLES, 0, 150);
+			ImGui::SliderInt("Number of frames", &frameCount, 1, 60);
 			ImGui::Checkbox("Render fog and water?", &timeToRender);
 
 			if (useGridPos) {
