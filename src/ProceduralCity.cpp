@@ -59,7 +59,7 @@ public:
 void SetupCamera() {
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(35.0, 1.0, 1.0, 1000.0); // Adjust this based on your city's size
+	gluPerspective(35.0, 1.0, 1.0, 1000.0);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -152,6 +152,7 @@ std::array<std::array<double, 7>, 9> heightSets = { {
 
 
 glm::vec3 calculateNormal(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& v3) {
+
 	glm::vec3 edge1 = v2 - v1;
 	glm::vec3 edge2 = v3 - v1;
 	glm::vec3 normal = glm::cross(edge1, edge2);
@@ -160,6 +161,7 @@ glm::vec3 calculateNormal(const glm::vec3& v1, const glm::vec3& v2, const glm::v
 }
 
 void draw(bool t = false) {
+
 	properties();
 	int repeat = 2;
 
@@ -212,6 +214,7 @@ public:
 };
 
 void randPos(int dNum, int heightSetIndex) {
+
 	if (heightSetIndex < 0 || heightSetIndex >= heightSets.size()) {
 		std::cerr << "Invalid height set index." << std::endl;
 		return;
@@ -244,6 +247,7 @@ void randPos(int dNum, int heightSetIndex) {
 }
 
 void gridPos(int dNum, int heightSetIndex) {
+
 	if (heightSetIndex < 0 || heightSetIndex >= heightSets.size()) {
 		std::cerr << "Invalid height set index." << std::endl;
 		return;
@@ -302,7 +306,6 @@ void procedural(GLfloat groundX, GLfloat groundZ, int dNum) {
 	for (int i = 0; i < dNum; i++) {
 		glPushMatrix();
 
-		// Adjust building positions to be centered relative to the ground plane
 		GLfloat adjustedX = buildingPos[i][0] - offsetX;
 		GLfloat adjustedZ = buildingPos[i][1] - offsetZ;
 
@@ -312,7 +315,6 @@ void procedural(GLfloat groundX, GLfloat groundZ, int dNum) {
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, buildingTexture);
 
-		// Draw a building
 		glPushMatrix();
 		glScalef(1.0, 5.0, 1.0);
 		draw(true);
@@ -321,31 +323,31 @@ void procedural(GLfloat groundX, GLfloat groundZ, int dNum) {
 		glDisable(GL_TEXTURE_2D);
 		glPopMatrix();
 
-		// Store the final positions and heights in a Surface struct
 		for (int j = 0; j < 6; ++j) {
 			glm::vec3 finalVertices[4];
 			for (int k = 0; k < 4; ++k) {
 				glm::vec3 originalVertex(vBuilding[quad[j][k]][0], vBuilding[quad[j][k]][1], vBuilding[quad[j][k]][2]);
 				glm::vec3 transformedVertex = glm::vec3(
-					originalVertex.x + adjustedX * 1.65,
-					(originalVertex.y * height[i] * 9) - 2.75,
-					originalVertex.z + adjustedZ * 1.65
+					originalVertex.x + adjustedX * 1.65 - 1.0f,
+					(originalVertex.y * height[i] * 9) - 3.0f,
+					originalVertex.z + adjustedZ * 1.65 - 1.0f
 				);
 				finalVertices[k] = transformedVertex;
 			}
 
 			Surface wall;
 			wall.type = QUAD;
-			wall.pos1 = finalVertices[0];
-			wall.pos2 = finalVertices[1];
-			wall.pos3 = finalVertices[2];
-			wall.pos4 = finalVertices[3];
+			wall.pos3 = finalVertices[0];
+			wall.pos4 = finalVertices[1];
+			wall.pos2 = finalVertices[2];
+			wall.pos1 = finalVertices[3];
 			walls.push_back(wall);
 		}
 	}
 }
 
 void Load(unsigned int& textureID, const char* filename) {
+
 	BitmapReader bmpReader(filename);
 	glBindTexture(GL_TEXTURE_2D, textureID);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -353,6 +355,7 @@ void Load(unsigned int& textureID, const char* filename) {
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+
 	if (action == GLFW_PRESS) {
 		if (key == GLFW_KEY_R) {
 			useGridPos = !useGridPos;
@@ -361,5 +364,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 }
 
 std::vector<Surface> BuildingWalls() {
+
 	return walls;
 }

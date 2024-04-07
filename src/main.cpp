@@ -24,7 +24,6 @@
 #define OMP_NUM_THREADS 8
 using namespace std;
 
-/* Reduce this number to speed up compilation time. */
 int NUM_PARTICLES = 10;
 
 const int screenWidth = 1000;
@@ -41,7 +40,6 @@ const GLfloat EPSILON = 1e-2;
 bool timeToRender = false;
 bool moveWater = false;
 bool showAnimation = false;
-bool heightAdjusted = false;
 
 int frameCount = 1;
 int currentFrameIndex = 0;
@@ -80,7 +78,7 @@ int perlinSeed = 12345;
 float perlinFrequency = 0.01;
 
 vector<glm::vec4> generatePerlinTexture() {
-	// generate perlin noise
+
 	perlinNoise.SetNoiseType(FastNoise::NoiseType::Perlin);
 	perlinNoise.SetFrequency(perlinFrequency);
 
@@ -99,7 +97,6 @@ vector<glm::vec4> generatePerlinTexture() {
 			else if (normalizedNoiseVal < 0.0) {
 				normalizedNoiseVal = 0.0;
 			}
-			// std::cout << normalizedNoiseVal << std::endl;
 
 			glm::vec4 temp = glm::vec4(normalizedNoiseVal, normalizedNoiseVal, normalizedNoiseVal, normalizedNoiseVal);
 
@@ -108,17 +105,6 @@ vector<glm::vec4> generatePerlinTexture() {
 	}
 
 	return _PerlinRawValues;
-
-	/*
-	GLuint texture;
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 800, 800, 0, GL_RGBA, GL_FLOAT, _PerlinRawValues.data());
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	return texture;
-	*/
 }
 
 /* Generates the initial position for the particles that comprise the water. */
@@ -128,8 +114,8 @@ glm::vec3 GeneratePosition() {
 	std::mt19937 gen(rd());
 
 	/* Determines the shape of the water triangle. */
-	float minX = 10.0f; //decreasing x floods the city
-	float maxX = 30.0f;
+	float minX = 10.0f;
+	float maxX = 20.0f;
 	float minZ = -30.0f;
 	float maxZ = 30.0f;
 
@@ -165,7 +151,7 @@ vector<Surface> CreateParticles(GLuint numParticles) {
 	return particles;
 }
 
-/* Creates any lights necessary to illuminate the scene. */
+/* Creates any lights necessary to illuminate the scene. We only use one light source. */
 vector<Light> CreateLights() {
 
 	Light l;
@@ -403,38 +389,17 @@ vector<glm::vec4> RayTraceOutput() {
 	return colors;
 }
 
-glm::vec4 mix(glm::vec4 originalColor, glm::vec4 fogColor, glm::vec4 fogFactor) {
-	glm::vec4 mixed = originalColor * (glm::vec4(1.0, 1.0, 1.0, 1.0) - fogFactor) + fogColor * fogFactor;
-	return mixed;
-}
-
-/* Draws the water particles over the city. */
+/* Draws the water particles and the fog over the city. */
 void DrawWaterParticles() {
 
 	if (moveWater == true) {
-		colors.clear();
 
+		colors.clear();
 		colors = RayTraceOutput();
 	}
 
 	vector<glm::vec4> perlinTexture = generatePerlinTexture();
-
-	// Interpolating between scene and perlin texture
 	vector<glm::vec4> finalFog;
-
-	/*
-	float fogDensity_factor = 0.97;
-	glm::vec4 fogColor = glm::vec4(0.7, 0.7, 0.7, 0.7);
-	float fogFactor = 0.7;
-	glm::vec4 fogFactorVec = glm::vec4(fogFactor, fogFactor, fogFactor, fogFactor);
-	for (int i = 0; i < colors.size(); i++) {
-		float fogDensity = perlinTexture[i].x * fogDensity_factor;
-
-		glm::vec4 finalColor = mix(colors[i], fogColor, fogFactorVec);
-
-		finalFog.push_back(finalColor);
-	}
-	*/
 
 	for (int i = 0; i < colors.size(); i++) {
 		if (colors[i].w <= 0) {
@@ -443,7 +408,6 @@ void DrawWaterParticles() {
 			colors[i].z = 0;
 		}
 
-		// std::cout << colors[i].x << "," << colors[i].y << "," << colors[i].z << "," << colors[i].w << std::endl;
 		glm::vec4 finalColor = colors[i] + perlinTexture[i];
 
 		if (finalColor.x > 1.0) {
@@ -503,7 +467,7 @@ void DrawWaterParticles() {
 	glDisable(GL_LIGHTING);
 	glDisable(GL_LIGHT0);
 
-	/* Drawing the water particles. */
+	/* Drawing the final texture. */
 	glBegin(GL_QUADS);
 
 	glTexCoord2f(0.0f, 0.0f);
@@ -526,6 +490,7 @@ void DrawWaterParticles() {
 	glDisable(GL_TEXTURE_2D);
 }
 
+/* Captures the city scene to a texture so that it can be drawn over and displayed. */
 GLuint CaptureScreenToTexture() {
 
 	GLuint textureID;
@@ -553,7 +518,7 @@ GLuint CaptureScreenToTexture() {
 	return textureID;
 }
 
-/* Drawing the preexisting city. */
+/* Drawing the preexisting city from the captured texture. */
 void DrawCityFromTexture() {
 
 	if (cityTexture == -1) {
@@ -609,7 +574,6 @@ void InitDisplay() {
 
 	lights = CreateLights();
 
-
 	DrawCityFromTexture();
 	DrawWaterParticles();
 
@@ -658,7 +622,6 @@ void FluidMovement() {
 	particles.insert(particles.end(), newParticles.begin(), newParticles.end());
 }
 
-
 /* What controls the rendering timer. */
 void RenderingTimer(GLFWwindow* window, int width, int height) {
 	if (timeToRender) {
@@ -687,7 +650,7 @@ void RenderingTimer(GLFWwindow* window, int width, int height) {
 
 		frameCount--;
 
-		/* If change is detected, call timer. */
+		/* If it is time to stop rendering frames and begin displaying them. */
 		if (frameCount > 0) {
 			glfwSetTime(0.0);
 			glfwSetWindowSizeCallback(window, RenderingTimer);
@@ -699,6 +662,7 @@ void RenderingTimer(GLFWwindow* window, int width, int height) {
 	}
 }
 
+/* Used to animate the different frames that were rendered in an infinite loop. */
 void Animate() {
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -713,17 +677,26 @@ void Animate() {
 	glBindTexture(GL_TEXTURE_2D, frames[currentFrameIndex]);
 
 	glBegin(GL_QUADS);
-	glTexCoord2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f);
-	glTexCoord2f(1.0f, 0.0f); glVertex2f(screenWidth, 0.0f);
-	glTexCoord2f(1.0f, 1.0f); glVertex2f(screenWidth, screenHeight);
-	glTexCoord2f(0.0f, 1.0f); glVertex2f(0.0f, screenHeight);
+	glTexCoord2f(0.0f, 0.0f); 
+	glVertex2f(0.0f, 0.0f);
+
+	glTexCoord2f(1.0f, 0.0f); 
+	glVertex2f(screenWidth, 0.0f);
+
+	glTexCoord2f(1.0f, 1.0f); 
+	glVertex2f(screenWidth, screenHeight);
+
+	glTexCoord2f(0.0f, 1.0f); 
+	glVertex2f(0.0f, screenHeight);
+
 	glEnd();
 
 	glDisable(GL_TEXTURE_2D);
 }
 
+/* Main function where the program begins. */
 int main(int argc, char* argv[]) {
-	// Set the number of threads omp is allowed to take up
+
 	omp_set_num_threads(OMP_NUM_THREADS);
 
 	if (!glfwInit()) {
@@ -748,11 +721,10 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
-	// Setup ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	ImGui::StyleColorsDark(); // Set style
+	ImGui::StyleColorsDark();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 	glfwSetKeyCallback(window, key_callback);
@@ -810,20 +782,15 @@ int main(int argc, char* argv[]) {
 			ImGui::Text("Adjust city parameters.");
 			ImGui::SliderInt("Number of Buildings", &dynamicBuildingNum, 1, 150);
 			ImGui::SliderInt("Building Height", &dynamicHeightNum, 0, 8);
-			//ImGui::Checkbox("Use Grid Street", &useGridPos);
 
 			ImGui::SliderFloat("Fog intensity", &perlinFrequency, 0.01, 0.05);
 
 			ImGui::SliderInt("Number of water particles", &NUM_PARTICLES, 0, 150);
-			ImGui::SliderInt("Number of frames", &frameCount, 1, 60);
+			ImGui::SliderInt("Number of frames", &frameCount, 1, 300);
 			ImGui::Checkbox("Render fog and water?", &timeToRender);
 
-			if (useGridPos) {
-				ImGui::SliderFloat("Street Width", &dynamicStreetWidth, 0, 2.5);
-			}
 			ImGui::End();
 
-			// Rendering
 			ImGui::Render();
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		}
@@ -831,7 +798,6 @@ int main(int argc, char* argv[]) {
 		glfwSwapBuffers(window);
 	}
 
-	// Cleanup
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
