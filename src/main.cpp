@@ -48,7 +48,7 @@ double lastFrameTime;
 double currentTime;
 double deltaTime;
 
-float frameRate = 0.25;
+float frameRate = 0.125;
 std::chrono::duration<float> frameWait(frameRate);
 
 FastNoise perlinNoise;
